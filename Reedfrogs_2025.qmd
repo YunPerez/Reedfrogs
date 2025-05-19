@@ -62,11 +62,11 @@ theme_set(theme_minimal())
 
 # Introducción
 
-En este proyecto empleamos los datos experimentales de Vonesh & Bolker (2005) [1], quienes investigaron cómo la presencia de depredadores induce plasticidad en los tiempos de eclosión de la rana de junco africana *Hyperolius spinigularis* [2]. El estudio demostró que, aunque la eclosión anticipada reduce la mortalidad embrionaria hasta en un 40% bajo alta presión depredadora, las larvas resultantes —a pesar de su menor tamaño inicial— presentan una tasa de supervivencia incluso superior, gracias a respuestas compensatorias como aceleración del crecimiento y reducción de la fase acuática.
+En este proyecto empleamos los datos experimentales de Vonesh & Bolker (2005) \[1\], quienes investigaron cómo la presencia de depredadores induce plasticidad en los tiempos de eclosión de la rana de junco africana *Hyperolius spinigularis* \[2\]. El estudio demostró que, aunque la eclosión anticipada reduce la mortalidad embrionaria hasta en un 40% bajo alta presión depredadora, las larvas resultantes —a pesar de su menor tamaño inicial— presentan una tasa de supervivencia incluso superior, gracias a respuestas compensatorias como aceleración del crecimiento y reducción de la fase acuática.
 
-[1] Vonesh, J. R., & Bolker, B. M. (2005). Statistical tools for analyzing larval amphibian survival data. *Ecology*, 86(1), 172-182.
+\[1\] Vonesh, J. R., & Bolker, B. M. (2005). Statistical tools for analyzing larval amphibian survival data. *Ecology*, 86(1), 172-182.
 
-[2] Se refiere a la capacidad de los embriones de la rana para ajustar su desarrollo y eclosión en respuesta a cambios ambientales, como la presencia de depredadores o el secado de su hábitat
+\[2\] Se refiere a la capacidad de los embriones de la rana para ajustar su desarrollo y eclosión en respuesta a cambios ambientales, como la presencia de depredadores o el secado de su hábitat
 
 Los datos constan de 48 observaciones ("tanques de renacuajos") con cinco variables clave:
 
@@ -189,8 +189,7 @@ No hay diferencias entre tanques, salvo la variación por la densidad inicial $D
     -   Para cada tanque $i$:
         -   $D_i$: densidad inicial (número de renacuajos)
         -   $S_i$: número de renacuajos supervivientes
--   **Modelo**
-    $$
+-   **Modelo** $$
     S_i \sim \textrm{Binomial}(D_i,p_i)
     $$
 
@@ -200,13 +199,11 @@ $$
 
 $$
 \bar{\alpha} = \textrm{Normal}(0, 1.5)
-$$ 
-$$
+$$ $$
 \alpha_j = \textrm{Normal}(\bar{\alpha}, 1.5)
 $$
 
 Este modelo ignora la heterogeneidad entre tanques (total pooling) y servirá como línea base para comparar con el modelo jerárquico.
-
 
 ```{stan output.var="m_1"}
 data {

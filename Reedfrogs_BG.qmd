@@ -1,0 +1,813 @@
+---
+title: "Análisis Causal de la Mortalidad de Renacuajos de Rana Carrizo"
+subtitle: "Métodos Analíticos"
+editor: visual
+author:
+  - "Blanca Estela García Manjarrez - 118886"
+  - "Yuneri Pérez Arellano – 199813"
+date: "21-may-2025"
+execute:
+  echo: true
+  message: false
+  warning: false
+  env:
+    CMDSTANR_NO_VER_CHECK: "TRUE"
+format: 
+    html:
+      toc: TRUE
+      embed-resources: TRUE
+      theme: flatly
+      lang: es
+      font-size: 1.1em
+      include-in-header: 
+      - text: |
+          <style>
+            body { 
+              line-height: 2; /* Adjust the value as needed */
+            }
+          </style>
+---
+
+```{r librerias, inlude=FALSE, echo=FALSE, message=FALSE, warning=FALSE}
+# Cargar librerías necesarias
+# install.packages(c("coda","mvtnorm","devtools","loo","dagitty","shape"))
+# we recommend running this in a fresh R session or restarting your current session
+# install.packages("cmdstanr", repos = c('https://stan-dev.r-universe.dev', getOption("repos")))
+# devtools::install_github("rmcelreath/rethinking")
+knitr::opts_chunk$set(
+  echo    = FALSE,
+  message = FALSE,
+  warning = FALSE
+)
+Sys.setenv(CMDSTANR_NO_VER_CHECK = "TRUE")
+#options(mc.cores        = parallel::detectCores(), rstan.auto_write = TRUE)
+options(rethinking.backend = "cmdstanr")
+suppressPackageStartupMessages({
+ # library(cmdstanr)
+  library(rstan)
+  library(rethinking)
+  library(bayesplot)
+  library(loo)
+  library(posterior)
+  library(tidyverse)
+  library(kableExtra)
+  library(scales)
+  library(ggplot2)
+  library(ggdag)
+  library(DiagrammeR)
+  library(gt)
+})
+theme_set(theme_minimal())
+```
+
+# Introducción
+
+En este proyecto empleamos los datos experimentales de Vonesh & Bolker (2005) \[1\], quienes investigaron cómo la presencia de depredadores induce plasticidad en los tiempos de eclosión de la rana de junco africana *Hyperolius spinigularis* \[2\]. El estudio demostró que, aunque la eclosión anticipada reduce la mortalidad embrionaria hasta en un 40% bajo alta presión depredadora, las larvas resultantes (a pesar de su menor tamaño inicial) presentan una tasa de supervivencia incluso superior, gracias a respuestas compensatorias como aceleración del crecimiento y reducción de la fase acuática.
+
+\[1\] Vonesh, J. R., & Bolker, B. M. (2005). Statistical tools for analyzing larval amphibian survival data. *Ecology*, 86(1), 172-182.
+
+\[2\] Se refiere a la capacidad de los embriones de la rana para ajustar su desarrollo y eclosión en respuesta a cambios ambientales, como la presencia de depredadores o el secado de su hábitat
+
+Los datos constan de 48 observaciones ("tanques de renacuajos") con cinco variables clave:
+
+| **Variable** | **Descripción**                               |
+|--------------|-----------------------------------------------|
+| density      | Densidad inicial de renacuajos                |
+| pred         | Factor indicador de presencia de depredadores |
+| size         | Tamaño de los renacuajos                      |
+| surv         | Número de renacuajos que sobrevivieron        |
+| propsurv     | Proporción de supervivencia (surv/density)    |
+
+El conjunto de datos cuenta con información de 48 tanques clasificados en pequeños, medianos y grandes, dependiendo de la densidad de renacuajos en cada uno. Aunado a lo anterior, se dispone de datos sobre la supervivencia y la tasa de supervivencia en cada tanque.
+
+Para nuestro análisis nos centraremos en **surv** como variable de respuesta (binomial) frente a **density** como total de ensayos, y consideraremos la estructura de agrupación en tanques como fuente de variabilidad no explicada por las manipulaciones experimentales.
+
+Ignorar la heterogeneidad entre tanques (*no pooling*) o estimar un intercepto independiente para cada uno (*efectos fijos*) puede llevar, respectivamente, a subestimar o sobreestimar la variabilidad real. Por ello empleamos también un **modelo bayesiano jerárquico** (*partial pooling*) con interceptos variables, de este modo, cada tanque tiene su propio parámetro de línea base, y al mismo tiempo estimamos la dispersión entre tanques mediante un *prior adaptativo*, que aprende de los datos.
+
+Nuestros objetivos son:
+
+1.  **Reproducir y extender** los ejemplos de *Statistical Rethinking* aplicados a los datos de Reed Frogs.
+2.  **Modelar** la mortalidad larval y las respuestas compensatorias posteriores usando modelos de efectos fijos (*no pooling*) y modelos multinivel (*partial pooling*).
+3.  **Evaluar** la calidad y complejidad de cada modelo mediante diagnósticos MCMC y criterios de información (WAIC/LOO).
+4.  **Ilustrar** el trade-off underfitting/overfitting mediante simulaciones con distintos tamaños de muestra.
+5.  **Desplegar** un análisis causal formal con un DAG que recoja nuestros supuestos de identificación.
+
+Con este enfoque buscamos profundizar en los costes y beneficios de la eclosión temprana inducida por depredadores, y demostrar cómo la regularización adaptativa de los modelos jerárquicos permite inferir efectos individuales de forma más robusta en presencia de datos jerarquizados y dispersos.
+
+# Datos
+
+```{r datos, echo=FALSE, mesage=FALSE, warning=FALSE}
+data(reedfrogs)
+df <- reedfrogs
+# Índice a los datos
+df <-  df |>
+  mutate(tank = seq(NROW(df)))
+df$index <- seq.int(nrow(df))
+# CPromedio de propsurv
+mean_propsurv <- mean(df$propsurv)
+```
+
+```{r grafica_datos, echo=FALSE, message=FALSE, warning=FALSE}
+ggplot(df, aes(x = tank, y = propsurv)) +
+  geom_point(color = "#2c7fb8", linewidth = 2, alpha = 0.7) +
+  geom_hline(
+    yintercept = mean_propsurv,
+    linetype   = "dashed",
+    color      = "firebrick",
+    size       = 0.8
+  ) +
+  facet_wrap(~ density, scales = "free_x", nrow = 1) +
+  scale_y_continuous(
+    labels = scales::percent_format(accuracy = 1),
+    limits = c(0, 1)
+  ) +
+  labs(
+    title = "Tasa de supervivencia por tanque y densidad",
+    x     = "Tanque (índice)",
+    y     = "Proporción que sobrevive"
+  ) +
+  theme_minimal(base_size = 14) +
+  theme(
+    panel.grid.major.x = element_blank(),
+    axis.text.x         = element_blank(),
+    axis.ticks.x        = element_blank(),
+    strip.text          = element_text(face = "bold", size = 12)
+  )
+```
+
+Estos datos muestran una gran variabilidad. Una parte obedece al tratamiento experimental, pero otra proviene de factores que no hemos medido. Imaginemos cada fila como un “tanque”, un microambiente donde viven renacuajos con características propias que no capturamos, y esas peculiaridades generan diferencias en la tasa de supervivencia, aun cuando las variables predictoras sean idénticas. En cada tanque realizamos múltiples observaciones (los renacuajos), por lo que tenemos medidas repetidas y heterogeneidad entre grupos.
+
+Si obviamos la estructura de tanques y aplicamos un mismo intercepto para todos, podríamos pasar por alto variaciones esenciales en la supervivencia y enmascarar relaciones con otras variables. En cambio, asignar un intercepto distinto a cada tanque mediante variables dummy equivaldría a una “amnesia” constante: cada tanque es único, pero sus datos también nos ayudan a estimar el comportamiento de los demás. Olvidar por completo esa conexión, de un tanque a otro, no tiene sentido.
+
+# DAG
+
+El modelo jerárquico propuesto busca reflejar las interacciones complejas entre la densidad, la supervivencia y otros factores fundamentales, con el fin de profundizar en cómo las ranas ajustan sus estrategias adaptativas frente al riesgo de depredación.
+
+A continuación, se presenta un Diagrama Acíclico Dirigido (DAG) que ilustra las relaciones causales entre las variables de interés. Este DAG se basa en la premisa de que la densidad de renacuajos, el tamaño y la presencia de depredadores influyen en la supervivencia, y que la jerarquía de los tanques también afecta a estas relaciones.
+
+```{r dag_graph, echo=FALSE, message=FALSE, warning=FALSE}
+#| fig-cap: "DAG causal: densidad, tamaño, depredadores y jerarquía de tanque"
+grViz("
+digraph {
+  graph [ ranksep=0.2, rankdir=LR ];
+  node  [ shape=plaintext ];
+
+  S;  T;  D;  G;  P;
+
+  edge [ minlen=5 ];
+  T -> S;
+  D -> S;
+  G -> S;
+  P -> S;
+}
+")
+```
+
+Con
+
+-   $\textrm{T}=\textrm{Tanque}$
+
+-   $\textrm{D}=\textrm{Densidad inicial}$
+
+-   $\textrm{G}=\textrm{Tamaño}$
+
+-   $\textrm{P}=\textrm{Depredadores}$
+
+-   $\textrm{S}=\textrm{Supervivencia}$
+
+Aunque podríamos imaginar otras dependencias entre las variables, hay que tener presente que estos datos provienen de un **experimento controlado**. En un escenario natural, sería razonable investigar vínculos, como el efecto del tamaño de los renacuajos en la densidad poblacional, la influencia de los depredadores sobre esa densidad, o el papel de variables no registradas —por ejemplo, la disponibilidad de alimento u otros recursos— tanto en el tamaño como en la densidad, e incluso factores genéticos que modulen el desarrollo de los renacuajos. Sería muy valioso repetir estas estimaciones en cuerpos de agua naturales, en lugar de en tanques de laboratorio. Por ahora, este experimento nos permite centrarnos en la tasa de supervivencia bajo condiciones estrictamente controladas, estableciendo una base sólida para futuros estudios en la naturaleza.
+
+# Modelos
+
+## 1. Modelo Total Pooling
+
+En este primer modelo **completamente agrupado** asumimos que todos los tanques tienen la misma probabilidad de supervivencia.\
+No hay diferencias entre tanques, salvo la variación por la densidad inicial $D_i$.
+
+-   **Datos**
+    -   $T$: número total de tanques (48).
+    -   Para cada tanque $i$:
+        -   $D_i$: densidad inicial (número de renacuajos)
+        -   $S_i$: número de renacuajos supervivientes
+-   **Modelo** $$
+    S_i \sim \textrm{Binomial}(D_i,p_i)
+    $$
+
+$$
+\textrm{logit}(p_i) = \alpha_{T[i]}
+$$
+
+$$
+\bar{\alpha} = \textrm{Normal}(0, 1.5)
+$$ $$
+\alpha_j = \textrm{Normal}(\bar{\alpha}, 1.5)
+$$
+
+Este modelo ignora la heterogeneidad entre tanques (total pooling) y servirá como línea base para comparar con el modelo jerárquico.
+
+```{stan output.var="m_1"}
+data {
+  int<lower=0> T;         // Num de tanques
+  int<lower=0> S[T];         // Num de renacuajos que sobrevivieron
+  int<lower=0> D[T];         // Densidad inicial
+}
+
+parameters {
+  real alpha;                // Un alpha para todos los tanques
+}
+
+model {
+  // Prior de aplha
+  alpha ~ normal(0, 1.5);
+  
+  for (t in 1:T) {
+    S[t] ~ binomial(D[t], inv_logit(alpha));
+  }
+}
+
+generated quantities {
+  int S_rep[T]; 
+
+  // Predicciones basadas en probabilidad comun
+  for (t in 1:T) {
+    S_rep[t] = binomial_rng(D[t], inv_logit(alpha));
+  }
+}
+```
+
+En el enfoque de *complete pooling*, asignamos una única $\alpha$ a todos los tanques, de modo que el modelo asume idéntica probabilidad de supervivencia para los renacuajos en cada uno. Es como si tratáramos todos los tanques como réplicas exactas, sin captar ninguna heterogeneidad más allá de la variación provocada por la densidad inicial.
+
+```{r ajuste_mod1, echo=FALSE, message=FALSE, warning=FALSE}
+dat <- list(
+  "T" = max(df$tank),
+  S = df$surv,
+  D = df$density
+)
+
+fit1 <- rstan::sampling(m_1, 
+                 data = dat, 
+                 iter = 2000, 
+                 chains = 4, 
+                 cores = 4,
+                 refresh=0)
+```
+
+A continuación, mostramos los resultados obtenidos para la estimación de $\alpha$ en nuestro modelo inicial.
+
+```{r mod1_results, echo=FALSE, message=FALSE, warning=FALSE}
+fit1_summary <- rstan::summary(fit1, 
+                               probs = c(0.025,
+                                         0.5,
+                                         0.975))$summary 
+
+fit1_summary |> 
+  as.data.frame() |>
+  rownames_to_column("parameter")  |>
+  select(parameter,mean, sd, "2.5%", "50%", "97.5%", n_eff, Rhat) |>
+  filter(parameter=='alpha' | parameter=='lp__')|>
+  gt() |>
+  fmt_number()
+```
+
+Y de la misma manera, podemos cotejar nuestras predicciones con los datos originales:
+
+```{r mod1_pred, echo=FALSE, message=FALSE, warning=FALSE}
+#| fig-cap: "Predicciones del modelo 1 (total pooling)"
+# Extraer las simulaciones de S_rep: matriz [iter × tanques]
+s_rep <- rstan::extract(fit1, pars="S_rep")$S_rep  
+
+# 1) Media de sobrevivientes estimados por tanque
+#    apply sobre la segunda dimensión (columnas = tanques)
+df$urv_est     <- apply(s_rep, 2, mean)    
+
+# 2) Pasar a tasa de supervivencia
+df$propsurv_est <- df$urv_est / df$density    
+
+# 3) Extraer alpha y transformarlo
+alpha_post <- rstan::extract(fit1, pars="alpha")$alpha
+alpha_est  <- plogis( mean(alpha_post) )
+
+# 4) Graficar
+g_predm1 <- ggplot(df, aes(x = index)) +
+  
+  # datos originales en gris
+  geom_point(aes(y = propsurv), color = "gray70") +
+  
+  # predicciones en azul
+  geom_point(aes(y = propsurv_est), color = "indianred1") +
+  
+  # línea punteada de alpha común
+  geom_hline(yintercept = alpha_est,
+             linetype = "dashed",
+             color = "steelblue") +
+  
+  # división de tanques por densidad
+  geom_vline(xintercept = c(16, 32, 48), color = "cyan3") +
+  
+  # etiquetas y formatos
+  scale_x_continuous(
+    breaks = c(8, 24, 40),
+    labels = c("1–15 (pequeño)", "16–31 (mediano)", "32–48 (grande)")
+  ) +
+  scale_y_continuous(labels = scales::percent_format(accuracy = 1)) +
+  labs(
+    x = "Índice de tanque",
+    y = "Tasa de supervivencia",
+    subtitle = "Gris: observados | Rojos: estimados Modelo 1"
+  ) +
+  theme_minimal(base_size = 14) +
+  theme(
+    axis.title = element_text(face = "italic")
+  )
+g_predm1
+```
+
+Podemos ver que las predicciones (puntos rojos) siguen la media de supervivencia de los tanques (línea discontinua azul), lo que evidencia un **subajuste del modelo**. Los datos originales aparecen en gris.
+
+## 2. Modelo No-Pooling
+
+En este modelo **no agrupado** (no pooling) asignamos un intercepto $\alpha_i$ distinto a cada tanque, pero no compartimos información entre ellos. Esto significa que cada tanque tiene su propio parámetro de línea base, y no hay aprendizaje entre ellos.
+
+$$ S_i \sim \textrm{Binomial}(D_i,p_i) $$
+
+$$ \textrm{logit}(p_i) = \alpha_{T[i]} $$
+
+$$ \bar{\alpha} = \textrm{Normal}(0, 1.5)$$ Lo cual se traduce en el siguiente código de Stan:
+
+```{stan output.var="m_2"}
+data {
+  int<lower=0> T;             // Número de tanques
+  int<lower=0> S[T];          // Número de sobrevivientes
+  int<lower=0> D[T];          // Densidad inicial
+}
+
+parameters {
+  real alpha[T];              // alpha para cada tanque
+}
+
+model {
+  // Priors para cada alpha_i
+  for (i in 1:T) {
+    alpha[i] ~ normal(0, 1.5);
+  }
+  
+  // Modelo para cada tanque
+  for (t in 1:T) {
+    S[t] ~ binomial(D[t], inv_logit(alpha[t]));
+  }
+}
+
+generated quantities {
+  int S_rep[T];
+
+  // Generar predicciones 
+  for (t in 1:T) {
+    S_rep[t] = binomial_rng(D[t], inv_logit(alpha[t]));
+  }
+}
+```
+
+```{r ajuste_mod2, echo=FALSE, message=FALSE, warning=FALSE}
+dat <- list(
+  "T" = max(df$tank),
+  S = df$surv,
+  D = df$density
+)
+
+fit2 <- rstan::sampling(m_2, 
+                 data = dat, 
+                 iter = 2000, 
+                 chains = 4, 
+                 cores = 4,
+                 refresh=0)
+```
+
+Podemos ver los resultados de nuestro segundo modelo para la estimación de $\alpha$.
+
+```{r mod2_results, echo=FALSE, message=FALSE, warning=FALSE}
+fit2_summary <- rstan::summary(fit2, 
+                               probs = c(0.025,
+                                         0.5,
+                                         0.975),
+                               pars=c('alpha','lp__'))$summary 
+
+fit2_summary |> 
+  as.data.frame() |>
+  rownames_to_column("parameter") |>
+  select(parameter,mean, sd, "2.5%", "50%", "97.5%", n_eff, Rhat) |>
+  gt() |>
+  fmt_number()
+```
+
+```{r mod2_pred, echo=FALSE, message=FALSE, warning=FALSE, fig.cap="Predicciones del modelo 2 (no pooling)"}
+# 0) extraer S_rep como matriz [iter × tanques]
+s_rep2 <- rstan::extract(fit2, pars="S_rep")$S_rep  
+
+# 1) media de sobrevivientes estimados por tanque
+df$urv_est2     <- apply(s_rep2, 2, mean)    
+
+# 2) tasa de supervivencia estimada
+df$propsurv_est2 <- df$urv_est2 / df$density    
+
+# 3) extraer alpha_i, promediar y transformar con inv_logit
+alpha2_post <- rstan::extract(fit2, pars="alpha")$alpha  
+alpha_est2  <- plogis( mean(alpha2_post) )           
+
+# 4) construir el gráfico
+g_predm2 <- ggplot(df, aes(x = index)) +
+  
+  # datos observados en gris
+  geom_point(aes(y = propsurv), color = "gray70") +
+  
+  # predicciones del modelo 2 en rojo
+  geom_point(aes(y = propsurv_est2), color = "indianred1") +
+  
+  # línea punteada en la media global estimada
+  geom_hline(yintercept = alpha_est2,
+             linetype = "dashed",
+             color = "steelblue") +
+  
+  # divisiones por densidad de tanque
+  geom_vline(xintercept = c(16, 32, 48), color = "cyan3") +
+  
+  # ejes con etiquetas ‘friendly’
+  scale_x_continuous(
+    breaks = c(8, 24, 40),
+    labels = c("1–15 (pequeño)",
+               "16–31 (mediano)",
+               "32–48 (grande)")
+  ) +
+  scale_y_continuous(labels = scales::percent_format(accuracy = 1)) +
+  
+  # títulos y subtítulo diferenciando colores
+  labs(
+    x = "Índice de tanque",
+    y = "Tasa de supervivencia",
+    subtitle = "Gris: observados | Rojos: estimados Modelo 2"
+  ) +
+  
+  # tema minimalista y itálica en títulos de ejes
+  theme_minimal(base_size = 14) +
+  theme(
+    axis.title = element_text(face = "italic")
+  )
+
+# 5) dibujar
+g_predm2
+```
+
+Al evaluar las estimaciones del modelo sin pooling (un intercepto $\alpha_i$ independiente por tanque) obtenemos:
+
+1.  **Gran variabilidad entre tanques**
+    -   Los $\alpha_i$ (en escala log-odds) oscilan aproximadamente entre $-1.9$ y $+3.4$.\
+    -   Transformados a probabilidad, algunos tanques se estiman con supervivencias cercanas al **10–20%** y otros al **90–95%**.
+2.  **Incertidumbre muy desigual**
+    -   Tanques con pocas observaciones (densidad pequeña) presentan desviaciones estándar de $\alpha_i$ de **0.6–0.8** y rangos de credibilidad muy amplios (p. ej. $\alpha_3: [–0.41, +2.06]$.\
+    -   Tanques con más renacuajos reducen su incertidumbre a **0.3–0.5** en la desviación estándar de $\alpha_i$.
+3.  **Sobreajuste**
+    -   Las predicciones del modelo (puntos rojos) siguen casi exactamente los datos observados (puntos grises), incluso en valores extremos.\
+    -   No existe “arrastre” hacia un promedio general: cada tanque se ajusta únicamente con su propia información.
+4.  **Problemas en tanques pequeños**
+    -   Con muestras muy pequeñas, pocas muertes o supervivencias cambian drásticamente la estimación de $\alpha_i$.\
+    -   El ancho de los intervalos de credibilidad hace poco útiles esas predicciones para la toma de decisiones.
+
+Por lo anterior, el modelo no agrupado captura fielmente cada dato empírico, pero padece de **sobreajuste y de alta incertidumbre en tanques con pocas observaciones**. Para obtener estimaciones más estables y evitar extremos sin fundamento, es recomendable utilizar un modelo **jerárquico** (partial pooling) que comparta información entre tanques.
+
+## 3. Modelo Partial Pooling
+
+En este tercer modelo **parcialmente agrupado** (partial pooling) asignamos un intercepto distinto a cada tanque, pero también estimamos la variabilidad entre ellos. Esto nos permite captar la heterogeneidad entre tanques y, al mismo tiempo, compartir información entre ellos.
+
+$$ S_i \sim \textrm{Binomial}(D_i,p_i) $$
+
+$$ \textrm{logit}(p_i) = \alpha_{T[i]} $$
+
+$$ \bar{\alpha} = \textrm{Normal}(0, 1.5)$$
+
+$$ \sigma_\alpha = \textrm{Exponential}(1) $$
+
+$$ \alpha_j = \textrm{Normal}(\bar{\alpha}, \sigma_\alpha) $$
+
+Lo cual se traduce en el siguiente código de Stan:
+
+```{stan output.var="m_3"}
+data {
+  int<lower=0> T;         // Num de tanques
+  int<lower=0> S[T];      // Num de renacuajos que sobrevivieron
+  int<lower=0> D[T];      // Densidad inicial
+}
+
+parameters {
+  real<lower=0> mu_alpha;        // Promedio del alpha
+  real<lower=0> sigma_alpha;      // Desv est de los alphas
+  vector[T] alpha_tank;           // Alpha de cada tanque
+}
+
+model {
+  // Hyperpriors 
+  mu_alpha ~ normal(0, 1.5);
+  sigma_alpha ~ exponential(1);
+  // Priors
+  alpha_tank ~ normal(mu_alpha, sigma_alpha);
+
+  for (t in 1:T) {
+    S[t] ~ binomial(D[t], inv_logit(alpha_tank[t]));
+  }
+}
+
+generated quantities {
+  int S_rep[T]; 
+
+  for (t in 1:T) {
+    S_rep[t] = binomial_rng(D[t], inv_logit(alpha_tank[t]));
+  }
+}
+
+```
+
+```{r ajuste_mod3, echo=FALSE, message=FALSE, warning=FALSE}
+dat <- list(
+  "T" = max(df$tank),
+  S = df$surv,
+  D = df$density
+)
+
+fit3 <- rstan::sampling(m_3, 
+                 data = dat, 
+                 iter = 2000, 
+                 chains = 4, 
+                 cores = 4,
+                 refresh=0)
+```
+
+```{r mod3_results, echo=FALSE, message=FALSE, warning=FALSE}
+fit3_summary <- rstan::summary(fit3, 
+                               probs = c(0.025,
+                                         0.5,
+                                         0.975),
+                               pars=c('alpha_tank','lp__'))$summary 
+
+fit3_summary |> 
+  as.data.frame() |>
+  rownames_to_column("parameter") |>
+  select(parameter,mean, sd, "2.5%", "50%", "97.5%", n_eff, Rhat) |>
+  gt() |>
+  fmt_number()
+```
+
+Y para los hiperparámetros
+
+```{r mod3_results_part2, echo=FALSE, message=FALSE, warning=FALSE}
+fit3_summary2 <- rstan::summary(fit3, 
+                               probs = c(0.025,
+                                         0.5,
+                                         0.975),
+                               pars=c('mu_alpha',
+                                      'sigma_alpha'))$summary 
+
+fit3_summary2 |> 
+  as.data.frame() |>
+  rownames_to_column("parameter") |>
+  select(parameter,mean, sd, "2.5%", "50%", "97.5%", n_eff, Rhat) |>
+  gt() |>
+  fmt_number()
+```
+
+```{r grafica_mod3, echo=FALSE, message=FALSE, warning=FALSE, fig.cap="Predicciones del modelo 3 (partial pooling)"}
+# 1) Extraer las simulaciones de S_rep: matriz [iter × tanques]
+s_rep3 <- rstan::extract(fit3, pars="S_rep")$S_rep  
+
+# 2) Media de renacuajos estimados por tanque
+df$urv_est3 <- apply(s_rep3, 2, mean)    
+
+# 3) Pasar a tasa de supervivencia
+df$propsurv_est3 <- df$urv_est3 / df$density    
+
+# 4) Extraer mu_alpha y transformarlo a probabilidad
+mu_post3 <- rstan::extract(fit3, pars="mu_alpha")$mu_alpha
+mu_est3  <- plogis( mean(mu_post3) )
+
+# 5) Graficar
+g_predm3 <- ggplot(df, aes(x = index)) +
+  
+  # datos originales en gris
+  geom_point(aes(y = propsurv), color = "gray70") +
+  
+  # predicciones del modelo 3 en verde
+  geom_point(aes(y = propsurv_est3), color = "indianred1") +
+  
+  # línea punteada del alpha común (mu_alpha)
+  geom_hline(yintercept = mu_est3,
+             linetype    = "dashed",
+             color       = "steelblue") +
+  
+  # divisores de densidad
+  geom_vline(xintercept = c(16, 32, 48), color = "cyan3") +
+  
+  # ejes personalizados
+  scale_x_continuous(
+    breaks = c(8, 24, 40),
+    labels = c("1–15 (pequeño)", "16–31 (mediano)", "32–48 (grande)")
+  ) +
+  scale_y_continuous(labels = scales::percent_format(accuracy = 1)) +
+  
+  # etiquetas
+  labs(
+    x        = "Índice de tanque",
+    y        = "Tasa de supervivencia",
+    subtitle = "Gris: observados | Rojos: estimados Modelo 3"
+  ) +
+  
+  # tema
+  theme_minimal(base_size = 14) +
+  theme(
+    axis.title    = element_text(face = "italic"),
+    plot.subtitle = element_text(face = "bold")
+  )
+g_predm3
+```
+
+1.  **Hiperparámetros poblacionales**
+    -   **Media global** $\mu_\alpha\approx1.35$ (sd = 0.25 - supervivencia promedio) $\text{logit}^{-1}(1.35)\approx0.79$.\
+    -   **Variabilidad entre tanques** $\sigma_\alpha\approx1.63$ (sd = 0.22), muestra heterogeneidad moderada-alta en tasas de supervivencia.
+2.  **Regularización adaptativa (“shrinkage”)**
+    -   Las estimaciones por tanque ($\alpha_j$) se **encogen hacia** la media global:
+        -   **Más encogimiento** en tanques pequeños (poca información).\
+        -   **Menos encogimiento** en tanques grandes (más datos).
+3.  **Equilibrio under-/over-fitting**
+    -   El modelo aprende el grado óptimo de pooling desde los datos.\
+    -   Corrige el subajuste del complete-pooling y el sobreajuste del no-pooling.
+4.  **Precisión y convergencia**
+    -   Intervalos más estrechos que en el modelo no-pooling, pero más amplios que en el total-pooling.\
+    -   Todos los $\hat R\approx1$ y n_eff elevados garantizan buena convergencia de la cadena.
+5.  **Implicaciones ecológicas**
+    -   Capta diferencias reales entre tanques (densidad, depredadores), sin ignorar heterogeneidad.\
+    -   Cada tanque “aprende” de los demás, mitigando el sesgo de muestras pequeñas.
+
+> El modelo parcialmente agrupado ofrece el mejor compromiso: reduce el ruido de tanques con pocos datos y a la vez preserva las verdaderas diferencias entre ellos, obteniendo estimaciones más robustas y ecológicamente interpretables.
+
+# Comparativos
+
+Ahora que tenemos los tres modelos ajustados, es momento de compararlos. Para ello, utilizaremos:
+- Diagnósticos MCMC: Para confirmar la buena convergencia de los modelos.
+- Criterios de información: WAIC y LOO para comparar modelos en términos de ajuste y complejidad.
+- Visualización de predicciones: Para contrastar la calidad de las predicciones por tanque.
+
+## Diagnósticos MCMC
+
+Una buena práctica es comparar las trazas y distribuciones posteriores de parámetros clave para verificar convergencia y comportamiento estable.
+
+```{r}
+posterior::as_draws_df(fit1) |> mcmc_trace(pars = "alpha") +
+  ggtitle("Modelo 1: Trazas de alpha (total pooling)")
+
+posterior::as_draws_df(fit2) |> mcmc_trace(pars = "alpha[1:4]") +
+  ggtitle("Modelo 2: Trazas de alpha[1:4] (no pooling)")
+
+posterior::as_draws_df(fit3) |> mcmc_trace(pars = c("mu_alpha", "sigma_alpha")) +
+  ggtitle("Modelo 3: Trazas de hiperparámetros (partial pooling)")
+
+```
+
+Estos gráficos nos permiten confirmar que las cadenas exploran bien el espacio posterior, sin signos de problemas como falta de mezcla o divergencias.
+
+
+## WAIC / LOO
+Calculamos criterios de información para comparar la bondad de ajuste penalizando la complejidad.
+
+```{r}
+log_lik1 <- extract_log_lik(fit1, parameter_name = "lp__")
+log_lik2 <- extract_log_lik(fit2, parameter_name = "lp__")
+log_lik3 <- extract_log_lik(fit3, parameter_name = "lp__")
+
+loo1 <- loo(log_lik1)
+loo2 <- loo(log_lik2)
+loo3 <- loo(log_lik3)
+
+loo_compare(loo1, loo2, loo3)
+```
+
+Interpreta así:
+- Menor valor de LOOIC o WAIC = mejor modelo.
+- Diferencias mayores a 10 puntos suelen indicar mejoras sustanciales.
+> Esto nos mostrará cuál modelo tiene mejor ajuste penalizando la complejidad. Esperamos que el modelo jerárquico (partial pooling) tenga el mejor compromiso.
+
+
+## Predicciones por tanque
+Unificamos en una sola gráfica las predicciones de los tres modelos para compararlas directamente.
+
+```{r}
+df_pred <- df |>
+  select(index, propsurv, propsurv_est, propsurv_est2, propsurv_est3) |>
+  pivot_longer(cols = starts_with("propsurv_est"),
+               names_to = "modelo", values_to = "prediccion") |>
+  mutate(modelo = recode(modelo,
+                         propsurv_est  = "Modelo 1",
+                         propsurv_est2 = "Modelo 2",
+                         propsurv_est3 = "Modelo 3"))
+
+ggplot(df_pred, aes(x = index)) +
+  geom_point(aes(y = propsurv), color = "gray50") +
+  geom_point(aes(y = prediccion, color = modelo)) +
+  scale_color_manual(values = c("Modelo 1" = "steelblue",
+                                "Modelo 2" = "firebrick",
+                                "Modelo 3" = "darkgreen")) +
+  labs(
+    x = "Tanque",
+    y = "Tasa de supervivencia",
+    title = "Comparación de predicciones por modelo",
+    subtitle = "Observado en gris"
+  ) +
+  theme_minimal(base_size = 14)
+```
+
+Este gráfico muestra cómo cada modelo aproxima los datos observados. Veremos que el modelo parcial logra un buen balance, sin subestimar ni sobreajustar.
+
+# Simulación y Validación (Trade-off Under/Overfitting)
+
+## 1. Generar datos simulados
+
+## 2. Ajustar modelo jerárquico (partial pooling)
+
+## 3. Gráfico de errores (Figura 12.3)
+
+```{r}
+# Calcular error absoluto por tanque para cada modelo
+df <- df |>
+  mutate(
+    error_nopool   = abs(propsurv - propsurv_est2),
+    error_partpool = abs(propsurv - propsurv_est3)
+  )
+
+# Clasificar los tanques por grupo de tamaño según la densidad
+df <- df |>
+  mutate(group = case_when(
+    density == 5  ~ "tiny",
+    density == 10 ~ "small",
+    density == 25 ~ "medium",
+    density == 35 ~ "large",
+    TRUE ~ "otro"
+  ))
+
+```
+
+
+```{r}
+ggplot(df, aes(x = index)) +
+  geom_point(aes(y = error_nopool), color = "blue", size = 2) +
+  geom_point(aes(y = error_partpool), color = "black", fill = "white", shape = 21, size = 2) +
+  facet_wrap(~ group, scales = "free_x", nrow = 1) +
+  stat_summary(aes(y = error_nopool), fun = mean, geom = "line", color = "blue") +
+  stat_summary(aes(y = error_partpool), fun = mean, geom = "line", color = "black", linetype = "dashed") +
+  labs(
+    x = "Tanque",
+    y = "Error absoluto",
+    title = "Error absoluto por tanque: No pooling vs Partial pooling",
+    subtitle = "Azul: No pooling | Negro: Partial pooling (con shrinkage)"
+  ) +
+  theme_minimal(base_size = 13)
+```
+
+La gráfica anterior muestra el error absoluto en la predicción de la tasa de supervivencia para cada tanque, comparando dos modelos:
+- Puntos azules: modelo sin agrupación (no pooling), en el que cada tanque se ajusta por separado, sin compartir información.
+- Círculos negros: modelo parcialmente agrupado (partial pooling), que ajusta un intercepto por tanque, pero con regularización hacia una media global.
+
+Los tanques han sido agrupados por tamaño de muestra (density) en cuatro categorías: tiny, small, medium y large.
+En los tanques pequeños (tiny y small), el modelo no agrupado presenta errores mucho mayores: al no compartir información, sufre de sobreajuste (overfitting) a datos ruidosos o escasos.
+El modelo partial pooling logra mejores predicciones en esos mismos grupos, gracias a que aplica shrinkage adaptativo, que “empuja” las estimaciones extremas hacia la media poblacional cuando hay poca evidencia.
+En los tanques grandes (medium y large), ambos modelos tienden a coincidir, ya que el efecto del shrinkage disminuye cuando hay más datos disponibles y el modelo jerárquico “confía” en la información local.
+
+El modelo parcialmente agrupado ofrece un mejor equilibrio entre flexibilidad y regularización. No solo mejora la precisión de las predicciones en tanques con pocos datos, sino que también se adapta a contextos con suficiente información, sin imponer una estructura artificial.
+
+Esta simulación ilustra de manera clara el valor del pooling parcial en contextos jerárquicos, y justifica su uso frente a modelos más simples o más extremos en sus supuestos.
+
+# Conclusiones
+En este proyecto empleamos modelos bayesianos jerárquicos para analizar los datos del experimento de Vonesh & Bolker sobre la supervivencia de renacuajos bajo condiciones de densidad y depredación. A partir de un enfoque comparativo, contrastamos tres estrategias de modelación: total pooling, no pooling y partial pooling, evaluando sus implicaciones estadísticas, computacionales y ecológicas.
+
+Nuestros principales hallazgos son los siguientes:
+- Modelos simples no capturan la estructura jerárquica
+El modelo completamente agrupado (total pooling) subestima la variabilidad entre tanques, imponiendo una única probabilidad de supervivencia para todos los casos. Esto genera subajuste (underfitting) y oculta diferencias importantes causadas por factores no observados, como la heterogeneidad ambiental o genética entre tanques.
+
+- Modelos completamente separados sobreajustan
+El modelo no agrupado (no pooling) permite que cada tanque tenga su propio parámetro, pero sin compartir información. Esto genera sobreajuste (overfitting), especialmente en tanques con pocas observaciones, donde pequeñas fluctuaciones pueden producir estimaciones extremas e inestables.
+
+- El modelo jerárquico logra el mejor equilibrio
+El modelo parcialmente agrupado (partial pooling) utiliza interceptos específicos para cada tanque, pero los hace depender de una distribución común que aprende de los datos. Esto permite:
+
+-Capturar la heterogeneidad real entre tanques.
+-Reducir la incertidumbre en tanques pequeños mediante shrinkage adaptativo.
+-Mejorar la predicción y generalización al evitar extremos no sustentados por evidencia.
+
+Las visualizaciones y la comparación de errores absolutos en la simulación demuestran que el pooling parcial ofrece el mejor compromiso entre fidelidad a los datos y estabilidad inferencial.
+
+Además del ajuste superior, los modelos jerárquicos bayesianos permiten:
+Incorporar conocimiento previo en forma de priors interpretables.
+Evaluar incertidumbre completa mediante intervalos creíbles.
+Usar criterios como WAIC y LOO para comparar modelos desde una perspectiva predictiva penalizada.
+
+Los modelos jerárquicos bayesianos no solo mejoran la precisión de nuestras estimaciones, sino que también promueven una filosofía de inferencia más cautelosa y adaptativa, al reconocer explícitamente la estructura de los datos y la incertidumbre inherente a los fenómenos naturales.
+
+Este proyecto ha demostrado que la regularización jerárquica no es solo una herramienta estadística poderosa, sino también un lente conceptual para pensar con mayor profundidad en los patrones, procesos y limitaciones de nuestros sistemas de observación.
+
+
+
+
