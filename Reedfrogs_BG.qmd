@@ -645,6 +645,39 @@ g_predm3
 
 > El modelo parcialmente agrupado ofrece el mejor compromiso: reduce el ruido de tanques con pocos datos y a la vez preserva las verdaderas diferencias entre ellos, obteniendo estimaciones más robustas y ecológicamente interpretables.
 
+### Relación entre log-odds y probabilidad
+
+Para comprender mejor el efecto del parámetro α en los modelos logísticos, se muestra a continuación la transformación `inv_logit(α)`:
+
+```{r}
+# Generar secuencia de valores para alpha (escala log-odds)
+alpha_vals <- seq(-4, 4, length.out = 200)
+
+# Calcular la probabilidad con inv_logit
+p_vals <- plogis(alpha_vals)
+
+# Crear un data frame
+df_alpha <- data.frame(
+  alpha = alpha_vals,
+  prob  = p_vals
+)
+
+# Graficar
+ggplot(df_alpha, aes(x = alpha, y = prob)) +
+  geom_line(color = "steelblue", size = 1.2) +
+  geom_vline(xintercept = 0, linetype = "dashed", color = "gray50") +
+  geom_hline(yintercept = 0.5, linetype = "dashed", color = "gray50") +
+  labs(
+    title    = "Relación entre α (log-odds) y probabilidad de supervivencia",
+    x        = expression(alpha ~ "(intercepto en escala log-odds)"),
+    y        = "Probabilidad de supervivencia"
+  ) +
+  theme_minimal(base_size = 14)
+
+```
+
+Esto ilustra cómo pequeñas diferencias en log-odds (α) se traducen en cambios más o menos pronunciados en la probabilidad, dependiendo de la región de la curva sigmoide.
+
 # Comparativos
 
 Ahora que tenemos los tres modelos ajustados, es momento de compararlos. Para ello, utilizaremos:
@@ -660,8 +693,10 @@ Una buena práctica es comparar las trazas y distribuciones posteriores de pará
 posterior::as_draws_df(fit1) |> mcmc_trace(pars = "alpha") +
   ggtitle("Modelo 1: Trazas de alpha (total pooling)")
 
-posterior::as_draws_df(fit2) |> mcmc_trace(pars = "alpha[1:4]") +
+posterior::as_draws_df(fit2) |>
+  mcmc_trace(pars = c("alpha[1]", "alpha[2]", "alpha[3]", "alpha[4]")) +
   ggtitle("Modelo 2: Trazas de alpha[1:4] (no pooling)")
+
 
 posterior::as_draws_df(fit3) |> mcmc_trace(pars = c("mu_alpha", "sigma_alpha")) +
   ggtitle("Modelo 3: Trazas de hiperparámetros (partial pooling)")
