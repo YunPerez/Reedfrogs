@@ -62,13 +62,15 @@ theme_set(theme_minimal())
 
 # Introducción
 
-En este proyecto empleamos los datos experimentales de Vonesh & Bolker (2005) \[1\], quienes investigaron cómo la presencia de depredadores induce plasticidad en los tiempos de eclosión de la rana de junco africana *Hyperolius spinigularis* \[2\]. El estudio demostró que, aunque la eclosión anticipada reduce la mortalidad embrionaria hasta en un 40% bajo alta presión depredadora, las larvas resultantes (a pesar de su menor tamaño inicial) presentan una tasa de supervivencia incluso superior, gracias a respuestas compensatorias como aceleración del crecimiento y reducción de la fase acuática.
+En este proyecto empleamos los datos experimentales de Vonesh & Bolker (2005) \[1\], quienes en su investigación examinaron las consecuencias de la plasticidad de eclosión inducida por depredadores desde la etapa larval hasta la metamorfosis en la rana de caña de África Oriental, *Hyperolius spinigularis* \[2\] realizando un experimento en el que manipulaban el tamaño y la densidad larvaria inicial (imitando los efectos de los depredadores de los huevos). Esperaban que las crías inducidas por depredadores (porque están menos desarrolladas y son más pequeñas) experimentaran mayores tasas de depredación per cápita y un período larvario más largo y, por lo tanto, exhibirían una menor supervivencia a la metamorfosis en presencia de depredadores acuáticos que las larvas más grandes, más desarrolladas y eclosionadas más tarde. Sin embargo, los resultados mostraron que las larvas inducidas por depredadores no solo sobrevivieron a la metamorfosis, sino que también tuvieron tasas de crecimiento más rápidas y alcanzaron tamaños más grandes en la metamorfosis. Esto los motivó a desarrollar un modelo parametrizado a partir de experimentos adicionales para explorar si una combinación de mecanismos, crecimiento compensatorio y depredación específica por densidad y tamaño, podría dar lugar a este patrón. Es por eso que con esta introducción, buscamos replicar y entender su trabajo, utilizando un enfoque bayesiano jerárquico para modelar la mortalidad larval y las respuestas compensatorias posteriores. En este sentido, el modelo jerárquico nos permitirá capturar la heterogeneidad entre los tanques de renacuajos y compartir información entre ellos, lo que resulta en estimaciones más robustas y precisas.
 
 \[1\] Vonesh, J. R., & Bolker, B. M. (2005). Statistical tools for analyzing larval amphibian survival data. *Ecology*, 86(1), 172-182.
 
 \[2\] Se refiere a la capacidad de los embriones de la rana para ajustar su desarrollo y eclosión en respuesta a cambios ambientales, como la presencia de depredadores o el secado de su hábitat
 
-Los datos constan de 48 observaciones ("tanques de renacuajos") con cinco variables clave:
+# Datos
+
+Los datos provienen de la librería de *rethinking*.Constan de 48 observaciones que representan los tanques de renacuajos clasificados en pequeños, medianos y grandes, dependiendo de la densidad de renacuajos en cada uno. Además, de información sobre la supervivencia (variable binaria) y de la tasa de supervivencia en cada tanque.
 
 | **Variable** | **Descripción**                               |
 |--------------|-----------------------------------------------|
@@ -78,23 +80,26 @@ Los datos constan de 48 observaciones ("tanques de renacuajos") con cinco variab
 | surv         | Número de renacuajos que sobrevivieron        |
 | propsurv     | Proporción de supervivencia (surv/density)    |
 
-El conjunto de datos cuenta con información de 48 tanques clasificados en pequeños, medianos y grandes, dependiendo de la densidad de renacuajos en cada uno. Aunado a lo anterior, se dispone de datos sobre la supervivencia y la tasa de supervivencia en cada tanque.
+En este experimento observamos mucha variación en los datos, y no toda se debe al tratamiento experimental (como la presencia de depredadores). Una gran parte de esa variación proviene de factores no medidos, propios de cada entorno donde viven los renacuajos.
+Podemos imaginar cada fila del dataset como un “tanque”, es decir, un pequeño ambiente experimental que contiene varios renacuajos. Aunque algunos tanques tengan la misma densidad o condiciones aparentes, hay muchas cosas que no estamos midiendo (como temperatura, luz, microalgas, etc.) que también influyen en la tasa de supervivencia.
+Esto hace que los tanques funcionen como lo que llamamos un conglomerado o cluster. Dentro de cada tanque observamos múltiples renacuajos, por lo que los datos tienen una estructura agrupada. En otras palabras, tenemos medidas repetidas dentro de grupos que son diferentes entre sí.
 
-Para nuestro análisis nos centraremos en **surv** como variable de respuesta (binomial) frente a **density** como total de ensayos, y consideraremos la estructura de agrupación en tanques como fuente de variabilidad no explicada por las manipulaciones experimentales.
+Para nuestro análisis nos centraremos en **surv** como variable de respuesta (binomial) frente a **density** como total de ensayos.
 
-Ignorar la heterogeneidad entre tanques (*no pooling*) o estimar un intercepto independiente para cada uno (*efectos fijos*) puede llevar, respectivamente, a subestimar o sobreestimar la variabilidad real. Por ello empleamos también un **modelo bayesiano jerárquico** (*partial pooling*) con interceptos variables, de este modo, cada tanque tiene su propio parámetro de línea base, y al mismo tiempo estimamos la dispersión entre tanques mediante un *prior adaptativo*, que aprende de los datos.
+Es importante mencionar, que si usamos el mismo valor base (intercepto) para todos los tanques *pooling*, estamos ignorando diferencias importantes entre ellos. Esto puede hacer que no detectemos correctamente el efecto de otras variables como la densidad o el predador.
+Si por el contrario, usamos un intercepto distinto para cada tanque *no pooling* pero sin compartir información entre ellos, podríamos caer en lo que se llama una “amnesia estadística”: tratamos a cada tanque como si no tuviéramos nada que aprender de los demás. Pero eso no tiene sentido, porque aunque cada tanque es diferente, los datos de uno pueden ayudarnos a entender mejor a los demás.
+
+Por ello empleamos también un **modelo bayesiano jerárquico o multinivel** o como lo mencionaremos en este proyecto: modelo de *partial pooling* con interceptos variables, de este modo, cada tanque tiene su propio parámetro de línea base, y al mismo tiempo estimamos la dispersión entre tanques mediante un *prior adaptativo*, que aprende de los datos. Con esto buscamor lograr un equilibrio entre asumir que todo es igual (subajuste) y asumir que todo es completamente distinto (sobreajuste).
 
 Nuestros objetivos son:
 
-1.  **Reproducir y extender** los ejemplos de *Statistical Rethinking* aplicados a los datos de Reed Frogs.
-2.  **Modelar** la mortalidad larval y las respuestas compensatorias posteriores usando modelos de efectos fijos (*no pooling*) y modelos multinivel (*partial pooling*).
-3.  **Evaluar** la calidad y complejidad de cada modelo mediante diagnósticos MCMC y criterios de información (WAIC/LOO).
-4.  **Ilustrar** el trade-off underfitting/overfitting mediante simulaciones con distintos tamaños de muestra.
+1.  **Reproducir y comprender** el ejemplo de *Statistical Rethinking* aplicados a los datos de Reedfrogs.
+2.  **Modelar** la mortalidad larval y las respuestas compensatorias posteriores explorando distintos niveles de agrupamiento *pooling*, *no pooling* y *partial pooling*.
+3.  **Evaluar** la calidad y complejidad de cada modelo mediante diagnósticos MCMC y criterios de comparación predictiva (WAIC/LOO).
+4.  **Explorar** el trade-off underfitting/overfitting mediante simulaciones con distintos tamaños de muestra, ilustrando los beneficios del pooling parcial.
 5.  **Desplegar** un análisis causal formal con un DAG que recoja nuestros supuestos de identificación.
 
 Con este enfoque buscamos profundizar en los costes y beneficios de la eclosión temprana inducida por depredadores, y demostrar cómo la regularización adaptativa de los modelos jerárquicos permite inferir efectos individuales de forma más robusta en presencia de datos jerarquizados y dispersos.
-
-# Datos
 
 ```{r datos, echo=FALSE, mesage=FALSE, warning=FALSE}
 data(reedfrogs)
@@ -135,15 +140,9 @@ ggplot(df, aes(x = tank, y = propsurv)) +
   )
 ```
 
-Estos datos muestran una gran variabilidad. Una parte obedece al tratamiento experimental, pero otra proviene de factores que no hemos medido. Imaginemos cada fila como un “tanque”, un microambiente donde viven renacuajos con características propias que no capturamos, y esas peculiaridades generan diferencias en la tasa de supervivencia, aun cuando las variables predictoras sean idénticas. En cada tanque realizamos múltiples observaciones (los renacuajos), por lo que tenemos medidas repetidas y heterogeneidad entre grupos.
-
-Si obviamos la estructura de tanques y aplicamos un mismo intercepto para todos, podríamos pasar por alto variaciones esenciales en la supervivencia y enmascarar relaciones con otras variables. En cambio, asignar un intercepto distinto a cada tanque mediante variables dummy equivaldría a una “amnesia” constante: cada tanque es único, pero sus datos también nos ayudan a estimar el comportamiento de los demás. Olvidar por completo esa conexión, de un tanque a otro, no tiene sentido.
-
 # DAG
 
-El modelo jerárquico propuesto busca reflejar las interacciones complejas entre la densidad, la supervivencia y otros factores fundamentales, con el fin de profundizar en cómo las ranas ajustan sus estrategias adaptativas frente al riesgo de depredación.
-
-A continuación, se presenta un Diagrama Acíclico Dirigido (DAG) que ilustra las relaciones causales entre las variables de interés. Este DAG se basa en la premisa de que la densidad de renacuajos, el tamaño y la presencia de depredadores influyen en la supervivencia, y que la jerarquía de los tanques también afecta a estas relaciones.
+A continuación, se presenta la Gráfica Dirigida Acíclica (DAG) que ilustra las relaciones causales entre las variables de interés. Este DAG se basa en la premisa de que la densidad de renacuajos, el tamaño y la presencia de depredadores influyen en la supervivencia, y que la jerarquía de los tanques también afecta a estas relaciones.
 
 ```{r dag_graph, echo=FALSE, message=FALSE, warning=FALSE}
 #| fig-cap: "DAG causal: densidad, tamaño, depredadores y jerarquía de tanque"
