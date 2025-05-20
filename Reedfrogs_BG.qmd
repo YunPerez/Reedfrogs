@@ -81,14 +81,11 @@ Los datos provienen de la librería de *rethinking*.Constan de 48 observaciones 
 | surv         | Número de renacuajos que sobrevivieron        |
 | propsurv     | Proporción de supervivencia (surv/density)    |
 
-En este experimento observamos mucha variación en los datos, y no toda se debe al tratamiento experimental (como la presencia de depredadores). Una gran parte de esa variación proviene de factores no medidos, propios de cada entorno donde viven los renacuajos.
-Podemos imaginar cada fila del dataset como un “tanque”, es decir, un pequeño ambiente experimental que contiene varios renacuajos. Aunque algunos tanques tengan la misma densidad o condiciones aparentes, hay muchas cosas que no estamos midiendo (como temperatura, luz, microalgas, etc.) que también influyen en la tasa de supervivencia.
-Esto hace que los tanques funcionen como lo que llamamos un conglomerado o cluster. Dentro de cada tanque observamos múltiples renacuajos, por lo que los datos tienen una estructura agrupada. En otras palabras, tenemos medidas repetidas dentro de grupos que son diferentes entre sí.
+En este experimento observamos mucha variación en los datos, y no toda se debe al tratamiento experimental (como la presencia de depredadores). Una gran parte de esa variación proviene de factores no medidos, propios de cada entorno donde viven los renacuajos. Podemos imaginar cada fila del dataset como un “tanque”, es decir, un pequeño ambiente experimental que contiene varios renacuajos. Aunque algunos tanques tengan la misma densidad o condiciones aparentes, hay muchas cosas que no estamos midiendo (como temperatura, luz, microalgas, etc.) que también influyen en la tasa de supervivencia. Esto hace que los tanques funcionen como lo que llamamos un conglomerado o cluster. Dentro de cada tanque observamos múltiples renacuajos, por lo que los datos tienen una estructura agrupada. En otras palabras, tenemos medidas repetidas dentro de grupos que son diferentes entre sí.
 
 Para nuestro análisis nos centraremos en **surv** como variable de respuesta (binomial) frente a **density** como total de ensayos.
 
-Es importante mencionar, que si usamos el mismo valor base (intercepto) para todos los tanques *pooling*, estamos ignorando diferencias importantes entre ellos. Esto puede hacer que no detectemos correctamente el efecto de otras variables como la densidad o el predador.
-Si por el contrario, usamos un intercepto distinto para cada tanque *no pooling* pero sin compartir información entre ellos, podríamos caer en lo que se llama una “amnesia estadística”: tratamos a cada tanque como si no tuviéramos nada que aprender de los demás. Pero eso no tiene sentido, porque aunque cada tanque es diferente, los datos de uno pueden ayudarnos a entender mejor a los demás.
+Es importante mencionar, que si usamos el mismo valor base (intercepto) para todos los tanques *pooling*, estamos ignorando diferencias importantes entre ellos. Esto puede hacer que no detectemos correctamente el efecto de otras variables como la densidad o el predador. Si por el contrario, usamos un intercepto distinto para cada tanque *no pooling* pero sin compartir información entre ellos, podríamos caer en lo que se llama una “amnesia estadística”: tratamos a cada tanque como si no tuviéramos nada que aprender de los demás. Pero eso no tiene sentido, porque aunque cada tanque es diferente, los datos de uno pueden ayudarnos a entender mejor a los demás.
 
 Por ello empleamos también un **modelo bayesiano jerárquico o multinivel** o como lo mencionaremos en este proyecto: modelo de *partial pooling* con interceptos variables, de este modo, cada tanque tiene su propio parámetro de línea base, y al mismo tiempo estimamos la dispersión entre tanques mediante un *prior adaptativo*, que aprende de los datos. Con esto buscamor lograr un equilibrio entre asumir que todo es igual (subajuste) y asumir que todo es completamente distinto (sobreajuste).
 
@@ -181,13 +178,11 @@ Aunque podríamos imaginar otras dependencias entre las variables, hay que tener
 
 ## 1. Modelo Total Pooling
 
-En este primer modelo **totalmente agrupado** asumimos que todos los tanques tienen la misma probabilidad de supervivencia.
-No hay diferencias entre tanques, salvo la variación por la densidad inicial $D_i$.
+En este primer modelo **totalmente agrupado** asumimos que todos los tanques tienen la misma probabilidad de supervivencia. No hay diferencias entre tanques, salvo la variación por la densidad inicial $D_i$.
 
 $$
 S_i \sim \textrm{Binomial}(D_i,p_i)
 $$
-
 
 $$
 \textrm{logit}(p_i) = \alpha
@@ -195,8 +190,7 @@ $$
 
 $$
 \alpha = \textrm{Normal}(0, 1.5)
-$$
-Este modelo ignora la heterogeneidad entre tanques (total pooling) y servirá como línea base para comparar con el modelo jerárquico.
+$$ Este modelo ignora la heterogeneidad entre tanques (total pooling) y servirá como línea base para comparar con el modelo jerárquico.
 
 ```{stan output.var="m_1"}
 data {
@@ -319,7 +313,7 @@ g_predm1 <- ggplot(df, aes(x = index)) +
 g_predm1
 ```
 
-Podemos ver los datos originales (puntos grises) y en las predicciones (puntos rojos) apreciamos que siguen la media de supervivencia de los tanques (línea discontinua azul), lo que evidencia un **subajuste del modelo**. 
+Podemos ver los datos originales (puntos grises) y en las predicciones (puntos rojos) apreciamos que siguen la media de supervivencia de los tanques (línea discontinua azul), lo que evidencia un **subajuste del modelo**.
 
 ## 2. Modelo No-Pooling
 
@@ -486,9 +480,7 @@ $$ S_i \sim \textrm{Binomial}(D_i,p_i) $$
 
 $$ \textrm{logit}(p_i) = \alpha_{T[i]} $$
 
-$$ \alpha_j = \textrm{Normal}(\mu, \sigma) $$
-$$ \mu \sim \textrm{Normal}(0, 1.5) $$
-$$ \sigma \sim \textrm{Exponential}(1) $$
+$$ \alpha_j = \textrm{Normal}(\mu, \sigma) $$ $$ \mu \sim \textrm{Normal}(0, 1.5) $$ $$ \sigma \sim \textrm{Exponential}(1) $$
 
 Lo cual se traduce en el siguiente código de Stan:
 
@@ -636,9 +628,7 @@ g_predm3
 
 Esta estructura jerárquica permite al modelo "aprender entre tanques": los tanques con poca información se benefician del conocimiento global, mientras que los tanques con muchos datos retienen sus características particulares. Esto se conoce como regularización adaptativa o "shrinkage".
 
-Las estimaciones de los hiperparámetros:
-- La media global $\mu_\alpha$ ≈ 1.35, lo que se traduce en una tasa de supervivencia promedio de aproximadamente 79% (vía función logística), es decir por arriba del promedio.
-- La desviación estándar $\sigma_\alpha$ ≈ 1.62, lo cual indica una heterogeneidad considerable entre tanques.
+Las estimaciones de los hiperparámetros: - La media global $\mu_\alpha$ ≈ 1.35, lo que se traduce en una tasa de supervivencia promedio de aproximadamente 79% (vía función logística), es decir por arriba del promedio. - La desviación estándar $\sigma_\alpha$ ≈ 1.62, lo cual indica una heterogeneidad considerable entre tanques.
 
 Los interceptos de tanques con pocos renacuajos (menos información) se encogen más hacia la media global, generando estimaciones más conservadoras.En contraste, los tanques con mayor número de observaciones muestran menos shrinkage, permitiendo conservar la variación real.
 
@@ -727,7 +717,6 @@ aux3 <- post3 %>%
     m3_upper = m3_q97_5 / density
   )
 ```
-
 
 ```{r}
 ggplot(df, aes(x = index)) +
@@ -850,9 +839,7 @@ p3 <- ggplot(df,
 
 ```
 
-Ahora que tenemos los tres modelos ajustados, es momento de compararlos. Para ello, utilizaremos:
-- Diagnósticos MCMC: Para confirmar la buena convergencia de los modelos.
-- Visualización de predicciones: Para contrastar la calidad de las predicciones por tanque.
+Ahora que tenemos los tres modelos ajustados, es momento de compararlos. Para ello, utilizaremos: - Diagnósticos MCMC: Para confirmar la buena convergencia de los modelos. - Visualización de predicciones: Para contrastar la calidad de las predicciones por tanque.
 
 ## Diagnósticos MCMC
 
@@ -873,7 +860,6 @@ posterior::as_draws_df(fit3) |> mcmc_trace(pars = c("mu_alpha", "sigma_alpha")) 
 ```
 
 Estos gráficos nos permiten confirmar que las cadenas exploran bien el espacio posterior, sin signos de problemas como falta de mezcla o divergencias.
-
 
 ## Predicciones por tanque
 
@@ -1076,7 +1062,6 @@ fit4_summary2 |>
 
 Como en los modelos anteriores, podemos ver cómo se comportan nuestras predicciones de este modelo completo contra los valores observados:
 
-
 ```{r predictions_m4, echo=FALSE, mesage=FALSE, warning=FALSE}
 post4 <- as.data.frame(fit4, pars = c('surv_rep'))
 df$urv_est4 <- post4 %>% colMeans
@@ -1272,15 +1257,11 @@ El modelo sin agrupamiento (no pooling) asigna parámetros independientes a cada
 
 *El modelo jerárquico o Parcial pooling logra un equilibrio*
 
-El modelo parcialmente agrupado (partial pooling) combina la flexibilidad de asignar parámetros específicos a cada grupo con la estabilidad de una distribución común que los regula. Esta estructura:
-- Captura la heterogeneidad real entre tanques.
-- Reduce la incertidumbre en grupos pequeños mediante shrinkage adaptativo.
-- Mejora la capacidad predictiva y generalización del modelo.
+El modelo parcialmente agrupado (partial pooling) combina la flexibilidad de asignar parámetros específicos a cada grupo con la estabilidad de una distribución común que los regula. Esta estructura: - Captura la heterogeneidad real entre tanques. - Reduce la incertidumbre en grupos pequeños mediante shrinkage adaptativo. - Mejora la capacidad predictiva y generalización del modelo.
 
 A nivel ecológico, encontramos que:
 
-- La supervivencia promedio fue mayor en renacuajos pequeños, un resultado que, aunque contraintuitivo, coincide con las conclusiones del estudio original.
-- La densidad inicial afecta negativamente la supervivencia, probablemente por competencia intraespecífica o mayor exposición a depredadores.
-- La presencia de depredadores incrementa la variabilidad de las tasas de supervivencia, posiblemente por efectos de habituación o respuestas defensivas plásticas.
-- Las distribuciones iniciales de supervivencia pueden actuar como regularizadores informativos, permitiendo una inferencia más robusta.
-
+-   La supervivencia promedio fue mayor en renacuajos pequeños, un resultado que, aunque contraintuitivo, coincide con las conclusiones del estudio original.
+-   La densidad inicial afecta negativamente la supervivencia, probablemente por competencia intraespecífica o mayor exposición a depredadores.
+-   La presencia de depredadores incrementa la variabilidad de las tasas de supervivencia, posiblemente por efectos de habituación o respuestas defensivas plásticas.
+-   Las distribuciones iniciales de supervivencia pueden actuar como regularizadores informativos, permitiendo una inferencia más robusta.
