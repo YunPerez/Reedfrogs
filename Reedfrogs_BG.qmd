@@ -679,7 +679,10 @@ ggplot(df_alpha, aes(x = alpha, y = prob)) +
     x        = expression(alpha ~ "(intercepto en escala log-odds)"),
     y        = "Probabilidad de supervivencia"
   ) +
-  theme_minimal(base_size = 14)
+  theme_minimal(base_size = 14) +
+  theme(
+    axis.title.x = element_text(face = "bold"),
+    axis.title.y = element_text(face = "bold"))
 
 ```
 
@@ -773,7 +776,9 @@ ggplot(df, aes(x = index)) +
   ) +
   theme_minimal(base_size = 14) +
   theme(
-    plot.title   = element_text(face = "bold")
+    plot.title   = element_text(face = "bold"),
+    axis.title.x = element_text(face = "bold"),
+    axis.title.y = element_text(face = "bold")
   )
 
 ```
@@ -781,6 +786,39 @@ ggplot(df, aes(x = index)) +
 Incluyendo intervalos de credibilidad para ver su comportamiento:
 
 ```{r}
+p2 <- ggplot(df, 
+       aes(x = index, 
+           y = propsurv_est2)) +
+  geom_point(data=df, 
+             aes(x = index, 
+                 y = propsurv), color='grey')+
+  geom_point(color='indianred1') +
+  geom_segment(data=aux2,
+               aes(x = index,
+                   xend = index,
+                   y = m2_lower,,
+                   yend = m2_upper),
+               color = "indianred3", alpha=0.2, linewidth = 1) +
+  geom_hline(yintercept = alpha_est, 
+             linetype = "dashed", 
+             color = "blue4") +
+  labs(x = "Tanque", 
+       y = "Tasa de Supervivencia",
+       title="Modelo No-pooling") +
+  theme(
+    axis.title.x = element_text(face = "bold"),
+    axis.title.y = element_text(face = "bold")
+  ) +
+  scale_x_continuous(breaks = c(8, 24, 40), 
+                     labels = c("1 <= Pequeño < 16", 
+                                "16 <= Mediano < 32", 
+                                "32 <= Grande < 48")) +
+  geom_vline(xintercept = 15.5, color = "cyan3")+
+  geom_vline(xintercept = 31.5, color = "cyan3")+
+  geom_vline(xintercept = 48.5, color = "cyan3")+
+  scale_y_continuous(labels = scales::percent_format())
+
+
 p3 <- ggplot(df, 
        aes(x = index, 
            y = propsurv_est3)) +
@@ -813,37 +851,6 @@ p3 <- ggplot(df,
   geom_vline(xintercept = 48.5, color = "cyan3")+
   scale_y_continuous(labels = scales::percent_format())
 
-p2 <- ggplot(df, 
-       aes(x = index, 
-           y = propsurv_est2)) +
-  geom_point(data=df, 
-             aes(x = index, 
-                 y = propsurv), color='grey')+
-  geom_point(color='indianred1') +
-  geom_segment(data=aux2,
-               aes(x = index,
-                   xend = index,
-                   y = m2_lower,,
-                   yend = m2_upper),
-               color = "indianred3", alpha=0.2, linewidth = 1) +
-  geom_hline(yintercept = alpha_est, 
-             linetype = "dashed", 
-             color = "blue4") +
-  labs(x = "Tanque", 
-       y = "Tasa de Supervivencia",
-       title="Modelo No-pooling") +
-  theme(
-    axis.title.x = element_text(face = "bold"),
-    axis.title.y = element_text(face = "bold")
-  ) +
-  scale_x_continuous(breaks = c(8, 24, 40), 
-                     labels = c("1 <= Pequeño < 16", 
-                                "16 <= Mediano < 32", 
-                                "32 <= Grande < 48")) +
-  geom_vline(xintercept = 15.5, color = "cyan3")+
-  geom_vline(xintercept = 31.5, color = "cyan3")+
-  geom_vline(xintercept = 48.5, color = "cyan3")+
-  scale_y_continuous(labels = scales::percent_format())
 
 (p2/p3)
 
@@ -891,15 +898,41 @@ df_pred <- df |>
 ggplot(df_pred, aes(x = index)) +
   geom_point(aes(y = propsurv), color = "gray50") +
   geom_point(aes(y = prediccion, color = modelo)) +
-  scale_color_manual(values = c("Total pooling" = "steelblue",
+  scale_color_manual(values = c("Total pooling" = "darkblue",
                                 "No-pooling" = "indianred1",
                                 "Parcial pooling" = "green3")) +
+  scale_x_continuous(breaks = c(8, 24, 40), 
+                     labels = c("1 <= Pequeño < 16", 
+                                "16 <= Mediano < 32", 
+                                "32 <= Grande < 48")) +
+  geom_vline(xintercept = 15.5, color = "cyan3")+
+  geom_vline(xintercept = 31.5, color = "cyan3")+
+  geom_vline(xintercept = 48.5, color = "cyan3")+
+  scale_y_continuous(labels = scales::percent_format())+
+  theme(axis.text.x = element_text(size = 1))+
+    # Línea de promedio de supervivencia
+  geom_hline(yintercept = alpha_est,
+             linetype = "dashed",
+             color = "steelblue") +
+    # Etiqueta del promedio
+  annotate("text", 
+           x = 28, y = alpha_est + 0.04,
+           label = "Promedio de supervivencia",
+           color = "steelblue", fontface = "italic", hjust = 0) +
+
+# Títulos y tema
   labs(
     x = "Tanque",
-    y = "Tasa de supervivencia",
-    title = "Comparación por modelo"
+    y = "Tasa de Supervivencia",
+    title = "Comparativo de Modelos"
   ) +
-  theme_minimal(base_size = 14)
+  theme_minimal(base_size = 14) +
+  theme(
+    plot.title   = element_text(face = "bold"),
+    axis.title.x = element_text(face = "bold"),
+    axis.title.y = element_text(face = "bold")
+  )+
+  scale_y_continuous(labels = scales::percent_format())
 ```
 
 Este gráfico muestra cómo cada modelo aproxima los datos observados. Veremos que el Modelo parcial poolong logra un buen balance, sin subestimar ni sobreajustar.
@@ -926,37 +959,333 @@ $$
 \beta_s \sim \textrm{Normal}(0,1)
 $$
 
+```{r}
+df <- df %>% 
+  mutate(pred_num=ifelse(pred=='no',0,1),
+         size_num=ifelse(size=='small',0,1)
+         ) 
+```
+
+Por lo que el codigo en stan:
+
+```{stan output.var="m_4"}
+data {
+  int<lower=0> N;               // Número total de observaciones
+  int<lower=0> T;               // Número de tanques
+  int<lower=0> surv[N];         // renacuajos que sobrevivieron
+  int<lower=0> density[N];      // Densidad inicial de renacuajos
+  int<lower=1, upper=T> tank[N];// Índice del número de tanque
+  vector[N] pred;               // Presencia de depredadores (0 o 1)
+  vector[N] size;               // Tamaño de los renacuajos
+}
+
+parameters {
+  real<lower=0> mu_alpha;      // Promedio de alpha
+  real<lower=0> sigma_alpha;    // Desviación estándar de los alphas
+  vector[T] alpha_tank;         // Alpha para cada tanque
+  real bp;                      // Coef para los depredadores
+  real bs;                      // Coef del tamaño de los renacuajos
+}
+
+model {
+  // Hyperpriors
+  mu_alpha ~ normal(0, 1.5);
+  sigma_alpha ~ exponential(1);
+
+  // Priors
+  alpha_tank ~ normal(mu_alpha, sigma_alpha);
+  bp ~ normal(-0.5, 1);
+  bs ~ normal(0, 1);  // Prior normal para el coeficiente de tamaño
+
+  // Modelo para cada observación
+  for (n in 1:N) {
+    real p = inv_logit(alpha_tank[tank[n]] + bp * pred[n] + bs * size[n]);
+    surv[n] ~ binomial(density[n], p);
+  }
+}
+
+generated quantities {
+  int surv_rep[N]; // Predicciones replicadas para la supervivencia
+
+  for (n in 1:N) {
+    surv_rep[n] = binomial_rng(density[n], inv_logit(alpha_tank[tank[n]] + bp * pred[n] + bs * size[n]));
+  }
+}
+
+```
+
+```{r ajuste_m4}
+#| echo: FALSE
+#| message: FALSE
+#| warning: FALSE
+
+dat <- list(
+  N = nrow(df),
+  "T" = max(df$tank),
+  surv = df$surv,
+  density = df$density,
+  tank = df$tank,
+  pred = df$pred_num,
+  size = df$size_num
+)
+
+fit4 <- rstan::sampling(m_4, 
+                 data = dat, 
+                 iter = 2000, 
+                 chains = 4, 
+                 cores = 4,
+                 refresh=0)
+```
+
+```{r tabla_m4}
+#| echo: FALSE
+#| message: FALSE
+#| warning: FALSE
+
+fit4_summary <- rstan::summary(fit4, 
+                               probs = c(0.025,
+                                         0.5,
+                                         0.975),
+                               pars=c('alpha_tank','lp__'))$summary 
+
+fit4_summary |> 
+  as.data.frame() |>
+  rownames_to_column("parameter") |>
+  select(parameter,mean, sd, "2.5%", "50%", "97.5%", n_eff, Rhat) |>
+  gt() |>
+  fmt_number()
+```
+
+Y para los hiperparámetros $\mu$, $\sigma$ y las $\beta$´s :
+
+```{r}
+#| echo: FALSE
+#| message: FALSE
+#| warning: FALSE
+
+fit4_summary2 <- rstan::summary(fit4, 
+                               probs = c(0.025,
+                                         0.5,
+                                         0.975),
+                               pars=c('mu_alpha',
+                                      'sigma_alpha',
+                                      'bp',
+                                      'bs'))$summary 
+
+fit4_summary2 |> 
+  as.data.frame() |>
+  rownames_to_column("parameter") |>
+  select(parameter,mean, sd, "2.5%", "50%", "97.5%", n_eff, Rhat) |>
+  gt() |>
+  fmt_number()
+```
+
+Como en los modelos anteriores, podemos ver cómo se comportan nuestras predicciones de este modelo completo contra los valores observados:
 
 
+```{r predictions_m4, echo=FALSE, mesage=FALSE, warning=FALSE}
+post4 <- as.data.frame(fit4, pars = c('surv_rep'))
+df$urv_est4 <- post4 %>% colMeans
+df$propsurv_est4 <- df$urv_est4/df$density
 
+alpha4 <- as.data.frame(fit4, pars = c('alpha_tank')) 
+alpha_est4 <- alpha4$alpha %>% mean() %>% plogis
+
+# Create the scatterplot with annotations
+m_completo <- ggplot(df, 
+            aes(x = index, 
+                y = propsurv_est4)) +
+  geom_point(data=df, 
+          aes(x = index, 
+              y = propsurv), color='grey')+
+  geom_point(color = 'purple3') +
+  geom_hline(yintercept = alpha_est, 
+             linetype = "dashed", 
+             color = "steelblue") + 
+  annotate("text", 
+           x = max(df$index) - 21, 
+           y = mean_propsurv + 0.02, 
+           label = "Promedio de supervivencia en tanques", 
+           color = "steelblue", fontface = "italic", hjust = 0) +
+  labs(x = "Tanque", 
+       y = "Tasa de Supervivencia") +
+  scale_x_continuous(breaks = c(8, 24, 40), 
+                     labels = c("1 <= Pequeño < 16", 
+                                "16 <= Mediano < 32", 
+                                "32 <= Grande < 48")) +
+  geom_vline(xintercept = 16, color = "cyan3")+
+  geom_vline(xintercept = 32, color = "cyan3")+
+  geom_vline(xintercept = 48, color = "cyan3")+
+  # ylim(0, 1) +
+  scale_y_continuous(labels = scales::percent_format())  +
+  theme_minimal(base_size = 14)+
+  labs(
+    subtitle = "Gris: Observados         Morado: Modelo con todas las variables"
+  )+
+  theme(
+    axis.title.x = element_text(face = "bold"),
+    axis.title.y = element_text(face = "bold")
+  ) 
+
+m_completo
+```
+
+Si comparamos este modelo completo contra el Parcial pooling que era hasta este momento el mejor modelo, podemos visualizar esta comparación:
+
+```{r tabla_aux4}
+#| echo: FALSE
+#| message: FALSE
+#| warning: FALSE
+
+aux4 <- post4 %>% 
+  pivot_longer(cols=1:ncol(post4), 
+               names_to="parameter", 
+               values_to="value") %>%
+  group_by(parameter) %>%
+  summarise(m4_q2_5=quantile(value, probs = 0.025),
+            m4_mean=mean(value, na.rm=T),
+            m4_q97_5=quantile(value, probs = 0.975)) %>% 
+  ungroup() %>% 
+  mutate(index=as.numeric(gsub("[^0-9]", "", parameter))) %>%
+  left_join(df %>% select(index, density), by="index") %>% 
+  mutate(m4_lower = m4_q2_5/density, 
+         m4_sup = m4_mean/density,
+         m4_upper = m4_q97_5/density)
+```
+
+```{r}
+#| echo: FALSE
+#| message: FALSE
+#| warning: FALSE
+p5<- ggplot(df, 
+       aes(x = index, 
+           y = propsurv_est3)) +
+  geom_point(data=df, 
+             aes(x = index, 
+                 y = propsurv), color='grey')+
+  geom_point(color = 'blue3') +
+  geom_point(aes(x=index, y=propsurv_est4), color='purple3') +
+  geom_hline(yintercept = alpha_est, 
+             linetype = "dashed", 
+             color = "steelblue") +
+  annotate("text", 
+           x = max(df$index) - 21, 
+           y = mean_propsurv + 0.02, 
+           label = "Promedio de supervivencia en tanques", 
+           color = "steelblue", fontface = "italic", hjust = 0) +
+  labs(x = "Tanque", 
+       y = "Tasa de Supervivencia",
+       title="Comparativo entre modelos",
+       subtitle="Parcial pooling = azul, Modelo Completo = morado") +
+  theme(
+    axis.title.x = element_text(face = "bold"),
+    axis.title.y = element_text(face = "bold")) +
+  scale_x_continuous(breaks = c(8, 24, 40), 
+                     labels = c("1 <= Pequeño < 16", 
+                                "16 <= Mediano < 32", 
+                                "32 <= Grande < 48")) +
+  geom_vline(xintercept = 15.5, color = "cyan3")+
+  geom_vline(xintercept = 31.5, color = "cyan3")+
+  geom_vline(xintercept = 48.5, color = "cyan3")+
+  scale_y_continuous(labels = scales::percent_format())
+
+p6 <- ggplot(df, 
+       aes(x = index, 
+           y = propsurv_est3)) +
+  geom_point(data=df, 
+             aes(x = index, 
+                 y = propsurv), color='grey')+
+  geom_point(color = 'blue3') +
+  geom_segment(data=aux3,
+               aes(x = index,
+                   xend = index,
+                   y = m3_lower,,
+                   yend = m3_upper),
+               color = "blue", alpha=0.2, linewidth = 1) +
+  geom_hline(yintercept = alpha_est, 
+             linetype = "dashed", 
+             color = "blue4") +
+  labs(x = "Tanque", 
+       y = "",
+       title="Modelo Parcial pooling - Jerárquico") +
+  theme(
+    axis.title.x = element_text(face = "bold"),
+    axis.title.y = element_text(face = "bold")
+  ) +
+  scale_x_continuous(breaks = c(8, 24, 40), 
+                     labels = c("1 <= Pequeño < 16", 
+                                "16 <= Mediano < 32", 
+                                "32 <= Grande < 48")) +
+  geom_vline(xintercept = 15.5, color = "cyan3")+
+  geom_vline(xintercept = 31.5, color = "cyan3")+
+  geom_vline(xintercept = 48.5, color = "cyan3")+
+  scale_y_continuous(labels = scales::percent_format())
+
+p7 <- ggplot(df, 
+       aes(x = index, 
+           y = propsurv_est4)) +
+  geom_point(data=df, 
+             aes(x = index, 
+                 y = propsurv), color='grey')+
+  geom_point(color='purple3') +
+  geom_segment(data=aux4,
+               aes(x = index,
+                   xend = index,
+                   y = m4_lower,,
+                   yend = m4_upper),
+               color = "purple3", alpha=0.2, linewidth = 1) +
+  geom_hline(yintercept = alpha_est, 
+             linetype = "dashed", 
+             color = "blue4") +
+  labs(x = "Tanque", 
+       y = "Tasa de Supervivencia",
+       title="Modelo completo") +
+  theme(
+    axis.title.x = element_text(face = "bold"),
+    axis.title.y = element_text(face = "bold")
+  ) +
+  scale_x_continuous(breaks = c(8, 24, 40), 
+                     labels = c("1 <= Pequeño < 16", 
+                                "16 <= Mediano < 32", 
+                                "32 <= Grande < 48")) +
+  geom_vline(xintercept = 15.5, color = "cyan3")+
+  geom_vline(xintercept = 31.5, color = "cyan3")+
+  geom_vline(xintercept = 48.5, color = "cyan3")+
+  scale_y_continuous(labels = scales::percent_format())
+
+p5
+```
+
+```{r}
+p6/p7
+```
+
+Pareciera que al incorporar más información el modelo no lo captura ya que se alejan un poco más de lo observado, si observamos la parte de mayor tasa de supervivencia en ambas gráficas, los datos de los modelos se alejan más de los observados, lo que podría indicar que el modelo no está capturando la información de los depredadores y el tamaño de los renacuajos.
 
 # Conclusiones
-En este proyecto empleamos modelos bayesianos jerárquicos para analizar los datos del experimento de Vonesh & Bolker sobre la supervivencia de renacuajos bajo condiciones de densidad y depredación. A partir de un enfoque comparativo, contrastamos tres estrategias de modelación: total pooling, no pooling y partial pooling, evaluando sus implicaciones estadísticas, computacionales y ecológicas.
 
-Nuestros principales hallazgos son los siguientes:
-- Modelos simples no capturan la estructura jerárquica
-El modelo completamente agrupado (total pooling) subestima la variabilidad entre tanques, imponiendo una única probabilidad de supervivencia para todos los casos. Esto genera subajuste (underfitting) y oculta diferencias importantes causadas por factores no observados, como la heterogeneidad ambiental o genética entre tanques.
+En este proyecto aplicamos modelos jerárquicos bayesianos para analizar datos experimentales sobre la supervivencia de renacuajos, recolectados por Vonesh & Bolker en un entorno controlado con variaciones en densidad poblacional y presencia de depredadores. A través de un enfoque comparativo, evaluamos tres estrategias de modelación —total pooling, no pooling y partial pooling— y exploramos sus implicaciones estadísticas y ecológicas.
 
-- Modelos completamente separados sobreajustan
-El modelo no agrupado (no pooling) permite que cada tanque tenga su propio parámetro, pero sin compartir información. Esto genera sobreajuste (overfitting), especialmente en tanques con pocas observaciones, donde pequeñas fluctuaciones pueden producir estimaciones extremas e inestables.
+Nuestros principales hallazgos son:
 
-- El modelo jerárquico logra el mejor equilibrio
-El modelo parcialmente agrupado (partial pooling) utiliza interceptos específicos para cada tanque, pero los hace depender de una distribución común que aprende de los datos. Esto permite:
+*Los modelos Total pooling subestiman la variabilidad*
+El enfoque de total pooling ignora la estructura jerárquica de los datos, asumiendo una única probabilidad de supervivencia para todos los tanques. Esto conduce a un subajuste (underfitting), perdiendo de vista diferencias importantes debidas a factores no observados, como la variación ambiental o genética entre tanques.
 
--Capturar la heterogeneidad real entre tanques.
--Reducir la incertidumbre en tanques pequeños mediante shrinkage adaptativo.
--Mejorar la predicción y generalización al evitar extremos no sustentados por evidencia.
+*Los modelos No-pooling sobreajustan*
+El modelo sin agrupamiento (no pooling) asigna parámetros independientes a cada tanque, sin compartir información entre ellos. Esto resulta en sobreajuste (overfitting), especialmente en tanques con pocos datos, donde incluso pequeñas fluctuaciones generan estimaciones inestables.
 
-Las visualizaciones y la comparación de errores absolutos en la simulación demuestran que el pooling parcial ofrece el mejor compromiso entre fidelidad a los datos y estabilidad inferencial.
+*El modelo jerárquico o Parcial pooling logra un equilibrio*
+El modelo parcialmente agrupado (partial pooling) combina la flexibilidad de asignar parámetros específicos a cada grupo con la estabilidad de una distribución común que los regula. Esta estructura:
+- Captura la heterogeneidad real entre tanques.
+- Reduce la incertidumbre en grupos pequeños mediante shrinkage adaptativo.
+- Mejora la capacidad predictiva y generalización del modelo.
 
-Además del ajuste superior, los modelos jerárquicos bayesianos permiten:
-Incorporar conocimiento previo en forma de priors interpretables.
-Evaluar incertidumbre completa mediante intervalos creíbles.
-Usar criterios como WAIC y LOO para comparar modelos desde una perspectiva predictiva penalizada.
+A nivel ecológico, encontramos que:
 
-Los modelos jerárquicos bayesianos no solo mejoran la precisión de nuestras estimaciones, sino que también promueven una filosofía de inferencia más cautelosa y adaptativa, al reconocer explícitamente la estructura de los datos y la incertidumbre inherente a los fenómenos naturales.
-
-Este proyecto ha demostrado que la regularización jerárquica no es solo una herramienta estadística poderosa, sino también un lente conceptual para pensar con mayor profundidad en los patrones, procesos y limitaciones de nuestros sistemas de observación.
+- La supervivencia promedio fue mayor en renacuajos pequeños, un resultado que, aunque contraintuitivo, coincide con las conclusiones del estudio original.
+- La densidad inicial afecta negativamente la supervivencia, probablemente por competencia intraespecífica o mayor exposición a depredadores.
+- La presencia de depredadores incrementa la variabilidad de las tasas de supervivencia, posiblemente por efectos de habituación o respuestas defensivas plásticas.
+- Las distribuciones iniciales de supervivencia pueden actuar como regularizadores informativos, permitiendo una inferencia más robusta.
 
 
 
