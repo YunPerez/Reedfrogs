@@ -460,7 +460,7 @@ g_predm2 <- ggplot(df, aes(x = index)) +
 g_predm2
 ```
 
-Al evaluar las estimaciones del modelo sin pooling (un intercepto $\alpha_i$ independiente por tanque) obtenemos:
+Al evaluar las estimaciones del modelo No- pooling (un intercepto $\alpha_i$ independiente por tanque) obtenemos:
 
 1.  **Gran variabilidad entre tanques**
     -   Los $\alpha_i$ (en escala log-odds) oscilan aproximadamente entre $-1.9$ y $+3.4$.\
@@ -475,21 +475,19 @@ Al evaluar las estimaciones del modelo sin pooling (un intercepto $\alpha_i$ ind
     -   Con muestras muy pequeñas, pocas muertes o supervivencias cambian drásticamente la estimación de $\alpha_i$.\
     -   El ancho de los intervalos de credibilidad hace poco útiles esas predicciones para la toma de decisiones.
 
-Por lo anterior, el modelo no agrupado captura fielmente cada dato empírico, pero padece de **sobreajuste y de alta incertidumbre en tanques con pocas observaciones**. Para obtener estimaciones más estables y evitar extremos sin fundamento, es recomendable utilizar un modelo **jerárquico** (partial pooling) que comparta información entre tanques.
+Por lo anterior, el modelo No-pooling captura fielmente cada dato empírico, pero padece de **sobreajuste y de alta incertidumbre en tanques con pocas observaciones**. Para obtener estimaciones más estables y evitar extremos sin fundamento, es recomendable utilizar un modelo **jerárquico** (partial pooling) que comparta información entre tanques.
 
 ## 3. Modelo Partial Pooling
 
-En este tercer modelo **parcialmente agrupado** (partial pooling) asignamos un intercepto distinto a cada tanque, pero también estimamos la variabilidad entre ellos. Esto nos permite captar la heterogeneidad entre tanques y, al mismo tiempo, compartir información entre ellos.
+En este tercer modelo **parcialmente agrupado** (partial pooling) asignamos un intercepto distinto a cada tanque, pero también estimamos la variabilidad entre ellos. Esto nos permite captar la heterogeneidad entre tanques y, al mismo tiempo, compartir información entre ellos. Para estom se agregan dos parámetros: $\mu$ y $\sigma$, los cuáles llamaremos hiperparámetros desde este punto.El punto es que, en el modelo anterior, todas las $\alpha_i$ se distribuían Normal con una media y desviación estándar establecida o fija. Con esta modificación, los $\alpha_i$ comparten una misma distribución, lo que le permite transmitir información entre tanques al modelo.
 
 $$ S_i \sim \textrm{Binomial}(D_i,p_i) $$
 
 $$ \textrm{logit}(p_i) = \alpha_{T[i]} $$
 
-$$ \bar{\alpha} = \textrm{Normal}(0, 1.5)$$
-
-$$ \sigma_\alpha = \textrm{Exponential}(1) $$
-
-$$ \alpha_j = \textrm{Normal}(\bar{\alpha}, \sigma_\alpha) $$
+$$ \alpha_j = \textrm{Normal}(\mu, \sigma) $$
+$$ \mu \sim \textrm{Normal}(0, 1.5) $$
+$$ \sigma \sim \textrm{Exponential}(1) $$
 
 Lo cual se traduce en el siguiente código de Stan:
 
@@ -558,7 +556,7 @@ fit3_summary |>
   fmt_number()
 ```
 
-Y para los hiperparámetros
+Y para los hiperparámetros $\mu$ y $\sigma$:
 
 ```{r mod3_results_part2, echo=FALSE, message=FALSE, warning=FALSE}
 fit3_summary2 <- rstan::summary(fit3, 
@@ -575,6 +573,8 @@ fit3_summary2 |>
   gt() |>
   fmt_number()
 ```
+
+Podemos nuevamente, ver cómo se comportan nuestras predicciones contra los valores observados:
 
 ```{r grafica_mod3, echo=FALSE, message=FALSE, warning=FALSE, fig.cap="Predicciones del modelo 3 (partial pooling)"}
 # 1) Extraer las simulaciones de S_rep: matriz [iter × tanques]
@@ -596,13 +596,17 @@ g_predm3 <- ggplot(df, aes(x = index)) +
   # datos originales en gris
   geom_point(aes(y = propsurv), color = "gray70") +
   
-  # predicciones del modelo 3 en verde
+  # predicciones del modelo partial pooling
   geom_point(aes(y = propsurv_est3), color = "indianred1") +
   
-  # línea punteada del alpha común (mu_alpha)
-  geom_hline(yintercept = mu_est3,
-             linetype    = "dashed",
-             color       = "steelblue") +
+  # línea punteada 
+  geom_hline(yintercept = alpha_est,
+             linetype = "dashed",
+             color = "steelblue") + annotate("text", 
+           x = max(df$index) - 21, 
+           y = mean_propsurv + 0.02, 
+           label = "Promedio de supervivencia en tanques", 
+           color = "steelblue", fontface = "italic", hjust = 0) +
   
   # divisores de densidad
   geom_vline(xintercept = c(16, 32, 48), color = "cyan3") +
@@ -618,19 +622,18 @@ g_predm3 <- ggplot(df, aes(x = index)) +
   labs(
     x        = "Índice de tanque",
     y        = "Tasa de supervivencia",
-    subtitle = "Gris: observados | Rojos: estimados Modelo 3"
+    subtitle = "Gris: Observados      Rojos: Estimados Modelo Parcial pooling"
   ) +
   
   # tema
   theme_minimal(base_size = 14) +
   theme(
-    axis.title    = element_text(face = "italic"),
-    plot.subtitle = element_text(face = "bold")
+    axis.title    = element_text(face = "bold"),
   )
 g_predm3
 ```
 
-1.  **Hiperparámetros poblacionales**
+1.  **Hiperparámetros poblacionales** checaaaaaar
     -   **Media global** $\mu_\alpha\approx1.35$ (sd = 0.25 - supervivencia promedio) $\text{logit}^{-1}(1.35)\approx0.79$.\
     -   **Variabilidad entre tanques** $\sigma_\alpha\approx1.63$ (sd = 0.22), muestra heterogeneidad moderada-alta en tasas de supervivencia.
 2.  **Regularización adaptativa (“shrinkage”)**
@@ -668,7 +671,7 @@ df_alpha <- data.frame(
 
 # Graficar
 ggplot(df_alpha, aes(x = alpha, y = prob)) +
-  geom_line(color = "steelblue", size = 1.2) +
+  geom_line(color = "cyan3", size = 1.2) +
   geom_vline(xintercept = 0, linetype = "dashed", color = "gray50") +
   geom_hline(yintercept = 0.5, linetype = "dashed", color = "gray50") +
   labs(
@@ -683,6 +686,110 @@ ggplot(df_alpha, aes(x = alpha, y = prob)) +
 Esto ilustra cómo pequeñas diferencias en log-odds (α) se traducen en cambios más o menos pronunciados en la probabilidad, dependiendo de la región de la curva sigmoide.
 
 # Comparativos
+
+Podemos graficar las estimaciones del modelo No-pooling y el Parcial pooling para ver el comportamiento con mayor detenimiento.
+
+```{r}
+# Extraer posterior de S_rep y construir dataframes para ambos modelos
+post2 <- rstan::extract(fit2, pars = "S_rep")$S_rep |> as.data.frame()
+post3 <- rstan::extract(fit3, pars = "S_rep")$S_rep |> as.data.frame()
+
+# Modelo No Pooling
+aux2 <- post2 %>%
+  pivot_longer(cols = everything(), names_to = "parameter", values_to = "value") %>%
+  group_by(parameter) %>%
+  summarise(
+    m2_q2_5   = quantile(value, probs = 0.025),
+    m2_mean   = mean(value),
+    m2_q97_5  = quantile(value, probs = 0.975)
+  ) %>%
+  ungroup() %>%
+  mutate(index = as.numeric(gsub("[^0-9]", "", parameter))) %>%
+  left_join(df %>% select(index, density), by = "index") %>%
+  mutate(
+    m2_lower = m2_q2_5 / density,
+    m2_sup   = m2_mean / density,
+    m2_upper = m2_q97_5 / density
+  )
+
+# Modelo Partial Pooling
+aux3 <- post3 %>%
+  pivot_longer(cols = everything(), names_to = "parameter", values_to = "value") %>%
+  group_by(parameter) %>%
+  summarise(
+    m3_q2_5   = quantile(value, probs = 0.025),
+    m3_mean   = mean(value),
+    m3_q97_5  = quantile(value, probs = 0.975)
+  ) %>%
+  ungroup() %>%
+  mutate(index = as.numeric(gsub("[^0-9]", "", parameter))) %>%
+  left_join(df %>% select(index, density), by = "index") %>%
+  mutate(
+    m3_lower = m3_q2_5 / density,
+    m3_sup   = m3_mean / density,
+    m3_upper = m3_q97_5 / density
+  )
+```
+
+
+```{r}
+ggplot(df, aes(x = index)) +
+  # Datos observados en gris
+  geom_point(aes(y = propsurv), color = "gray70") +
+  
+  # Modelo no agrupado (rojo)
+  geom_point(aes(y = propsurv_est2), color = "indianred1") +
+  
+  # Modelo jerárquico parcial (azul)
+  geom_point(aes(y = propsurv_est3), color = "darkblue") +
+  
+  # Línea de promedio de supervivencia
+  geom_hline(yintercept = alpha_est,
+             linetype = "dashed",
+             color = "steelblue") +
+  
+  # Etiqueta del promedio
+  annotate("text", 
+           x = 33, y = alpha_est + 0.03,
+           label = "Promedio de supervivencia",
+           color = "steelblue", fontface = "italic", hjust = 0) +
+  
+  # Líneas divisorias por densidad
+  geom_vline(xintercept = c(15.5, 31.5, 48.5), color = "cyan3") +
+  
+  # Ejes y etiquetas
+  scale_x_continuous(
+    breaks = c(8, 24, 40), 
+    labels = c("1–15 (pequeño)", "16–31 (mediano)", "32–48 (grande)")
+  ) +
+  scale_y_continuous(labels = scales::percent_format()) +
+  
+  # Títulos y tema
+  labs(
+    x = "Tanque",
+    y = "Tasa de Supervivencia",
+    title = "Comparativo de Modelos",
+    subtitle = "Gris: Observados     Rojo: No-pooling     Azul: Parcial pooling"
+  ) +
+  theme_minimal(base_size = 14) +
+  theme(
+    plot.title   = element_text(face = "bold")
+  )
+
+```
+
+Incluyendo intervalos de credibilidad para ver su comportamiento:
+
+```{r}
+
+
+```
+
+
+
+
+
+
 
 Ahora que tenemos los tres modelos ajustados, es momento de compararlos. Para ello, utilizaremos:
 - Diagnósticos MCMC: Para confirmar la buena convergencia de los modelos.
