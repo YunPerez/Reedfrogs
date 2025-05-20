@@ -120,7 +120,7 @@ ggplot(df, aes(x = tank, y = propsurv)) +
     linetype   = "dashed",
     color      = "firebrick",
     size       = 0.8
-  ) +
+  )  +
   facet_wrap(~ density, scales = "free_x", nrow = 1) +
   scale_y_continuous(
     labels = scales::percent_format(accuracy = 1),
@@ -180,28 +180,21 @@ Aunque podríamos imaginar otras dependencias entre las variables, hay que tener
 
 ## 1. Modelo Total Pooling
 
-En este primer modelo **completamente agrupado** asumimos que todos los tanques tienen la misma probabilidad de supervivencia.\
+En este primer modelo **totalmente agrupado** asumimos que todos los tanques tienen la misma probabilidad de supervivencia.
 No hay diferencias entre tanques, salvo la variación por la densidad inicial $D_i$.
 
--   **Datos**
-    -   $T$: número total de tanques (48).
-    -   Para cada tanque $i$:
-        -   $D_i$: densidad inicial (número de renacuajos)
-        -   $S_i$: número de renacuajos supervivientes
--   **Modelo** $$
-    S_i \sim \textrm{Binomial}(D_i,p_i)
-    $$
+$$
+S_i \sim \textrm{Binomial}(D_i,p_i)
+$$
+
 
 $$
-\textrm{logit}(p_i) = \alpha_{T[i]}
+\textrm{logit}(p_i) = \alpha
 $$
 
 $$
-\bar{\alpha} = \textrm{Normal}(0, 1.5)
-$$ $$
-\alpha_j = \textrm{Normal}(\bar{\alpha}, 1.5)
+\alpha = \textrm{Normal}(0, 1.5)
 $$
-
 Este modelo ignora la heterogeneidad entre tanques (total pooling) y servirá como línea base para comparar con el modelo jerárquico.
 
 ```{stan output.var="m_1"}
@@ -234,7 +227,7 @@ generated quantities {
 }
 ```
 
-En el enfoque de *complete pooling*, asignamos una única $\alpha$ a todos los tanques, de modo que el modelo asume idéntica probabilidad de supervivencia para los renacuajos en cada uno. Es como si tratáramos todos los tanques como réplicas exactas, sin captar ninguna heterogeneidad más allá de la variación provocada por la densidad inicial.
+En el enfoque de *total pooling*, asignamos una única $\alpha$ a todos los tanques, de modo que el modelo asume idéntica probabilidad de supervivencia para los renacuajos en cada uno de ellos. Es como si tratáramos todos los tanques como réplicas exactas, sin captar ninguna heterogeneidad más allá de la variación provocada por la densidad inicial.
 
 ```{r ajuste_mod1, echo=FALSE, message=FALSE, warning=FALSE}
 dat <- list(
@@ -268,7 +261,7 @@ fit1_summary |>
   fmt_number()
 ```
 
-Y de la misma manera, podemos cotejar nuestras predicciones con los datos originales:
+Podemos cotejar nuestras predicciones con los datos originales:
 
 ```{r mod1_pred, echo=FALSE, message=FALSE, warning=FALSE}
 #| fig-cap: "Predicciones del modelo 1 (total pooling)"
@@ -298,7 +291,11 @@ g_predm1 <- ggplot(df, aes(x = index)) +
   # línea punteada de alpha común
   geom_hline(yintercept = alpha_est,
              linetype = "dashed",
-             color = "steelblue") +
+             color = "steelblue") +  annotate("text", 
+           x = max(df$index) - 21, 
+           y = mean_propsurv + 0.02, 
+           label = "Promedio de supervivencia en tanques", 
+           color = "steelblue", fontface = "italic", hjust = 0)  +
   
   # división de tanques por densidad
   geom_vline(xintercept = c(16, 32, 48), color = "cyan3") +
@@ -312,16 +309,16 @@ g_predm1 <- ggplot(df, aes(x = index)) +
   labs(
     x = "Índice de tanque",
     y = "Tasa de supervivencia",
-    subtitle = "Gris: observados | Rojos: estimados Modelo 1"
+    subtitle = "Gris: Observados         Rojos: Estimados Modelo Total pooling"
   ) +
   theme_minimal(base_size = 14) +
   theme(
-    axis.title = element_text(face = "italic")
+    axis.title = element_text(face = "bold")
   )
 g_predm1
 ```
 
-Podemos ver que las predicciones (puntos rojos) siguen la media de supervivencia de los tanques (línea discontinua azul), lo que evidencia un **subajuste del modelo**. Los datos originales aparecen en gris.
+Podemos ver los datos originales (puntos grises) y en las predicciones (puntos rojos) apreciamos que siguen la media de supervivencia de los tanques (línea discontinua azul), lo que evidencia un **subajuste del modelo**. 
 
 ## 2. Modelo No-Pooling
 
@@ -329,9 +326,11 @@ En este modelo **no agrupado** (no pooling) asignamos un intercepto $\alpha_i$ d
 
 $$ S_i \sim \textrm{Binomial}(D_i,p_i) $$
 
-$$ \textrm{logit}(p_i) = \alpha_{T[i]} $$
+$$ \textrm{logit}(p_i) = \alpha_i $$
 
-$$ \bar{\alpha} = \textrm{Normal}(0, 1.5)$$ Lo cual se traduce en el siguiente código de Stan:
+$$ \alpha_i = \textrm{Normal}(0, 1.5)$$
+
+Lo cual se traduce en el siguiente código de Stan:
 
 ```{stan output.var="m_2"}
 data {
@@ -381,7 +380,7 @@ fit2 <- rstan::sampling(m_2,
                  refresh=0)
 ```
 
-Podemos ver los resultados de nuestro segundo modelo para la estimación de $\alpha$.
+Podemos ver los resultados de el modelo No-poolong para la estimación de $\alpha$.
 
 ```{r mod2_results, echo=FALSE, message=FALSE, warning=FALSE}
 fit2_summary <- rstan::summary(fit2, 
@@ -397,6 +396,8 @@ fit2_summary |>
   gt() |>
   fmt_number()
 ```
+
+Podemos cotejar nuestras predicciones de este modelo No-pooling con los datos originales:
 
 ```{r mod2_pred, echo=FALSE, message=FALSE, warning=FALSE, fig.cap="Predicciones del modelo 2 (no pooling)"}
 # 0) extraer S_rep como matriz [iter × tanques]
@@ -422,9 +423,13 @@ g_predm2 <- ggplot(df, aes(x = index)) +
   geom_point(aes(y = propsurv_est2), color = "indianred1") +
   
   # línea punteada en la media global estimada
-  geom_hline(yintercept = alpha_est2,
+  geom_hline(yintercept = alpha_est,
              linetype = "dashed",
-             color = "steelblue") +
+             color = "steelblue") + annotate("text", 
+           x = max(df$index) - 21, 
+           y = mean_propsurv + 0.02, 
+           label = "Promedio de supervivencia en tanques", 
+           color = "steelblue", fontface = "italic", hjust = 0) +
   
   # divisiones por densidad de tanque
   geom_vline(xintercept = c(16, 32, 48), color = "cyan3") +
@@ -442,13 +447,13 @@ g_predm2 <- ggplot(df, aes(x = index)) +
   labs(
     x = "Índice de tanque",
     y = "Tasa de supervivencia",
-    subtitle = "Gris: observados | Rojos: estimados Modelo 2"
+    subtitle = "Gris: Observados     Rojos: Estimados Modelo No-pooling"
   ) +
   
   # tema minimalista y itálica en títulos de ejes
   theme_minimal(base_size = 14) +
   theme(
-    axis.title = element_text(face = "italic")
+    axis.title = element_text(face = "bold")
   )
 
 # 5) dibujar
