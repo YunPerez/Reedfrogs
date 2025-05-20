@@ -781,19 +781,76 @@ ggplot(df, aes(x = index)) +
 Incluyendo intervalos de credibilidad para ver su comportamiento:
 
 ```{r}
+p3 <- ggplot(df, 
+       aes(x = index, 
+           y = propsurv_est3)) +
+  geom_point(data=df, 
+             aes(x = index, 
+                 y = propsurv), color='grey')+
+  geom_point(color = 'darkblue') +
+  geom_segment(data=aux3,
+               aes(x = index,
+                   xend = index,
+                   y = m3_lower,,
+                   yend = m3_upper),
+               color = "blue", alpha=0.2, linewidth = 1) +
+  geom_hline(yintercept = alpha_est, 
+             linetype = "dashed", 
+             color = "blue4") +
+  labs(x = "Tanque", 
+       y = "",
+       title="Modelo Parcial pooling - Jerárquico") +
+  theme(
+    axis.title.x = element_text(face = "bold"),
+    axis.title.y = element_text(face = "bold")
+  ) +
+  scale_x_continuous(breaks = c(8, 24, 40), 
+                     labels = c("1 <= Pequeño < 16", 
+                                "16 <= Mediano < 32", 
+                                "32 <= Grande < 48")) +
+  geom_vline(xintercept = 15.5, color = "cyan3")+
+  geom_vline(xintercept = 31.5, color = "cyan3")+
+  geom_vline(xintercept = 48.5, color = "cyan3")+
+  scale_y_continuous(labels = scales::percent_format())
 
+p2 <- ggplot(df, 
+       aes(x = index, 
+           y = propsurv_est2)) +
+  geom_point(data=df, 
+             aes(x = index, 
+                 y = propsurv), color='grey')+
+  geom_point(color='indianred1') +
+  geom_segment(data=aux2,
+               aes(x = index,
+                   xend = index,
+                   y = m2_lower,,
+                   yend = m2_upper),
+               color = "indianred3", alpha=0.2, linewidth = 1) +
+  geom_hline(yintercept = alpha_est, 
+             linetype = "dashed", 
+             color = "blue4") +
+  labs(x = "Tanque", 
+       y = "Tasa de Supervivencia",
+       title="Modelo No-pooling") +
+  theme(
+    axis.title.x = element_text(face = "bold"),
+    axis.title.y = element_text(face = "bold")
+  ) +
+  scale_x_continuous(breaks = c(8, 24, 40), 
+                     labels = c("1 <= Pequeño < 16", 
+                                "16 <= Mediano < 32", 
+                                "32 <= Grande < 48")) +
+  geom_vline(xintercept = 15.5, color = "cyan3")+
+  geom_vline(xintercept = 31.5, color = "cyan3")+
+  geom_vline(xintercept = 48.5, color = "cyan3")+
+  scale_y_continuous(labels = scales::percent_format())
+
+(p2/p3)
 
 ```
 
-
-
-
-
-
-
 Ahora que tenemos los tres modelos ajustados, es momento de compararlos. Para ello, utilizaremos:
 - Diagnósticos MCMC: Para confirmar la buena convergencia de los modelos.
-- Criterios de información: WAIC y LOO para comparar modelos en términos de ajuste y complejidad.
 - Visualización de predicciones: Para contrastar la calidad de las predicciones por tanque.
 
 ## Diagnósticos MCMC
@@ -802,43 +859,23 @@ Una buena práctica es comparar las trazas y distribuciones posteriores de pará
 
 ```{r}
 posterior::as_draws_df(fit1) |> mcmc_trace(pars = "alpha") +
-  ggtitle("Modelo 1: Trazas de alpha (total pooling)")
+  ggtitle("Modelo 1: Trazas de alpha (Total pooling)")
 
 posterior::as_draws_df(fit2) |>
   mcmc_trace(pars = c("alpha[1]", "alpha[2]", "alpha[3]", "alpha[4]")) +
-  ggtitle("Modelo 2: Trazas de alpha[1:4] (no pooling)")
+  ggtitle("Modelo 2: Trazas de alpha[1:4] (No-pooling)")
 
 
 posterior::as_draws_df(fit3) |> mcmc_trace(pars = c("mu_alpha", "sigma_alpha")) +
-  ggtitle("Modelo 3: Trazas de hiperparámetros (partial pooling)")
+  ggtitle("Modelo 3: Trazas de hiperparámetros (Partial pooling)")
 
 ```
 
 Estos gráficos nos permiten confirmar que las cadenas exploran bien el espacio posterior, sin signos de problemas como falta de mezcla o divergencias.
 
 
-## WAIC / LOO
-Calculamos criterios de información para comparar la bondad de ajuste penalizando la complejidad.
-
-```{r}
-log_lik1 <- extract_log_lik(fit1, parameter_name = "lp__")
-log_lik2 <- extract_log_lik(fit2, parameter_name = "lp__")
-log_lik3 <- extract_log_lik(fit3, parameter_name = "lp__")
-
-loo1 <- loo(log_lik1)
-loo2 <- loo(log_lik2)
-loo3 <- loo(log_lik3)
-
-loo_compare(loo1, loo2, loo3)
-```
-
-Interpreta así:
-- Menor valor de LOOIC o WAIC = mejor modelo.
-- Diferencias mayores a 10 puntos suelen indicar mejoras sustanciales.
-> Esto nos mostrará cuál modelo tiene mejor ajuste penalizando la complejidad. Esperamos que el modelo jerárquico (partial pooling) tenga el mejor compromiso.
-
-
 ## Predicciones por tanque
+
 Unificamos en una sola gráfica las predicciones de los tres modelos para compararlas directamente.
 
 ```{r}
@@ -847,84 +884,51 @@ df_pred <- df |>
   pivot_longer(cols = starts_with("propsurv_est"),
                names_to = "modelo", values_to = "prediccion") |>
   mutate(modelo = recode(modelo,
-                         propsurv_est  = "Modelo 1",
-                         propsurv_est2 = "Modelo 2",
-                         propsurv_est3 = "Modelo 3"))
+                         propsurv_est  = "Total pooling",
+                         propsurv_est2 = "No-pooling",
+                         propsurv_est3 = "Parcial pooling"))
 
 ggplot(df_pred, aes(x = index)) +
   geom_point(aes(y = propsurv), color = "gray50") +
   geom_point(aes(y = prediccion, color = modelo)) +
-  scale_color_manual(values = c("Modelo 1" = "steelblue",
-                                "Modelo 2" = "firebrick",
-                                "Modelo 3" = "darkgreen")) +
+  scale_color_manual(values = c("Total pooling" = "steelblue",
+                                "No-pooling" = "indianred1",
+                                "Parcial pooling" = "green3")) +
   labs(
     x = "Tanque",
     y = "Tasa de supervivencia",
-    title = "Comparación de predicciones por modelo",
-    subtitle = "Observado en gris"
+    title = "Comparación por modelo"
   ) +
   theme_minimal(base_size = 14)
 ```
 
-Este gráfico muestra cómo cada modelo aproxima los datos observados. Veremos que el modelo parcial logra un buen balance, sin subestimar ni sobreajustar.
+Este gráfico muestra cómo cada modelo aproxima los datos observados. Veremos que el Modelo parcial poolong logra un buen balance, sin subestimar ni sobreajustar.
 
-# Simulación y Validación (Trade-off Under/Overfitting)
+# Modelo con información completa
 
-## 1. Generar datos simulados
+En los tres modelos anteriores no incorporamos todas las variables, y como lo que deseamos es estudiar el fenómeno, incluir todas las variables, es decir, agregando la variable depredador P y la variable tamaño G, dado nuestro DAG, puede mejorar la estimación de los efectos por variable. Podemos extender entonces la idea del Modelo Jerárquico e incorporar estas variables. De tal modo que:
 
-## 2. Ajustar modelo jerárquico (partial pooling)
+$$ S_i \sim \textrm{Binomial}(D_i, p_i) $$
 
-## 3. Gráfico de errores (Figura 12.3)
+$$ \textrm{logit}(p_i) = \alpha_{\textrm{Tanque}[i]} + \beta_p *\textrm{pred} + \beta_s *\textrm{size}$$
 
-```{r}
-# Calcular error absoluto por tanque para cada modelo
-df <- df |>
-  mutate(
-    error_nopool   = abs(propsurv - propsurv_est2),
-    error_partpool = abs(propsurv - propsurv_est3)
-  )
+$$ \alpha_j \sim \textrm{Normal}(\mu, \sigma) $$
 
-# Clasificar los tanques por grupo de tamaño según la densidad
-df <- df |>
-  mutate(group = case_when(
-    density == 5  ~ "tiny",
-    density == 10 ~ "small",
-    density == 25 ~ "medium",
-    density == 35 ~ "large",
-    TRUE ~ "otro"
-  ))
+$$ \mu \sim \textrm{Normal}(0, 1.5) $$
 
-```
+$$ \sigma \sim \textrm{Exponential}(1) $$
+
+$$
+\beta_p \sim \textrm{Normal}(-0.5,1)
+$$
+
+$$
+\beta_s \sim \textrm{Normal}(0,1)
+$$
 
 
-```{r}
-ggplot(df, aes(x = index)) +
-  geom_point(aes(y = error_nopool), color = "blue", size = 2) +
-  geom_point(aes(y = error_partpool), color = "black", fill = "white", shape = 21, size = 2) +
-  facet_wrap(~ group, scales = "free_x", nrow = 1) +
-  stat_summary(aes(y = error_nopool), fun = mean, geom = "line", color = "blue") +
-  stat_summary(aes(y = error_partpool), fun = mean, geom = "line", color = "black", linetype = "dashed") +
-  labs(
-    x = "Tanque",
-    y = "Error absoluto",
-    title = "Error absoluto por tanque: No pooling vs Partial pooling",
-    subtitle = "Azul: No pooling | Negro: Partial pooling (con shrinkage)"
-  ) +
-  theme_minimal(base_size = 13)
-```
 
-La gráfica anterior muestra el error absoluto en la predicción de la tasa de supervivencia para cada tanque, comparando dos modelos:
-- Puntos azules: modelo sin agrupación (no pooling), en el que cada tanque se ajusta por separado, sin compartir información.
-- Círculos negros: modelo parcialmente agrupado (partial pooling), que ajusta un intercepto por tanque, pero con regularización hacia una media global.
 
-Los tanques han sido agrupados por tamaño de muestra (density) en cuatro categorías: tiny, small, medium y large.
-En los tanques pequeños (tiny y small), el modelo no agrupado presenta errores mucho mayores: al no compartir información, sufre de sobreajuste (overfitting) a datos ruidosos o escasos.
-El modelo partial pooling logra mejores predicciones en esos mismos grupos, gracias a que aplica shrinkage adaptativo, que “empuja” las estimaciones extremas hacia la media poblacional cuando hay poca evidencia.
-En los tanques grandes (medium y large), ambos modelos tienden a coincidir, ya que el efecto del shrinkage disminuye cuando hay más datos disponibles y el modelo jerárquico “confía” en la información local.
-
-El modelo parcialmente agrupado ofrece un mejor equilibrio entre flexibilidad y regularización. No solo mejora la precisión de las predicciones en tanques con pocos datos, sino que también se adapta a contextos con suficiente información, sin imponer una estructura artificial.
-
-Esta simulación ilustra de manera clara el valor del pooling parcial en contextos jerárquicos, y justifica su uso frente a modelos más simples o más extremos en sus supuestos.
 
 # Conclusiones
 En este proyecto empleamos modelos bayesianos jerárquicos para analizar los datos del experimento de Vonesh & Bolker sobre la supervivencia de renacuajos bajo condiciones de densidad y depredación. A partir de un enfoque comparativo, contrastamos tres estrategias de modelación: total pooling, no pooling y partial pooling, evaluando sus implicaciones estadísticas, computacionales y ecológicas.
