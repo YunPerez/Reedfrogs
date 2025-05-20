@@ -54,6 +54,7 @@ suppressPackageStartupMessages({
   library(scales)
   library(ggplot2)
   library(ggdag)
+  library(patchwork)
   library(DiagrammeR)
   library(gt)
 })
@@ -633,24 +634,17 @@ g_predm3 <- ggplot(df, aes(x = index)) +
 g_predm3
 ```
 
-1.  **Hiperparámetros poblacionales** checaaaaaar
-    -   **Media global** $\mu_\alpha\approx1.35$ (sd = 0.25 - supervivencia promedio) $\text{logit}^{-1}(1.35)\approx0.79$.\
-    -   **Variabilidad entre tanques** $\sigma_\alpha\approx1.63$ (sd = 0.22), muestra heterogeneidad moderada-alta en tasas de supervivencia.
-2.  **Regularización adaptativa (“shrinkage”)**
-    -   Las estimaciones por tanque ($\alpha_j$) se **encogen hacia** la media global:
-        -   **Más encogimiento** en tanques pequeños (poca información).\
-        -   **Menos encogimiento** en tanques grandes (más datos).
-3.  **Equilibrio under-/over-fitting**
-    -   El modelo aprende el grado óptimo de pooling desde los datos.\
-    -   Corrige el subajuste del complete-pooling y el sobreajuste del no-pooling.
-4.  **Precisión y convergencia**
-    -   Intervalos más estrechos que en el modelo no-pooling, pero más amplios que en el total-pooling.\
-    -   Todos los $\hat R\approx1$ y n_eff elevados garantizan buena convergencia de la cadena.
-5.  **Implicaciones ecológicas**
-    -   Capta diferencias reales entre tanques (densidad, depredadores), sin ignorar heterogeneidad.\
-    -   Cada tanque “aprende” de los demás, mitigando el sesgo de muestras pequeñas.
+Esta estructura jerárquica permite al modelo "aprender entre tanques": los tanques con poca información se benefician del conocimiento global, mientras que los tanques con muchos datos retienen sus características particulares. Esto se conoce como regularización adaptativa o "shrinkage".
 
-> El modelo parcialmente agrupado ofrece el mejor compromiso: reduce el ruido de tanques con pocos datos y a la vez preserva las verdaderas diferencias entre ellos, obteniendo estimaciones más robustas y ecológicamente interpretables.
+Las estimaciones de los hiperparámetros:
+- La media global $\mu_\alpha$ ≈ 1.35, lo que se traduce en una tasa de supervivencia promedio de aproximadamente 79% (vía función logística), es decir por arriba del promedio.
+- La desviación estándar $\sigma_\alpha$ ≈ 1.62, lo cual indica una heterogeneidad considerable entre tanques.
+
+Los interceptos de tanques con pocos renacuajos (menos información) se encogen más hacia la media global, generando estimaciones más conservadoras.En contraste, los tanques con mayor número de observaciones muestran menos shrinkage, permitiendo conservar la variación real.
+
+El modelo Parcial pooling corrige el subajuste del modelo Total pooling y el sobreajuste del modelo No-pooling, logrando un balance óptimo.Como podemos ver en la última gráfica, las predicciones siguen de cerca los datos observados, pero sin reaccionar de forma extrema a variaciones pequeñas o poco informativas. También podemos observar en la tabla de resultados que los valores de $\hat{R}$ ≈ 1.00 y los tamaños efectivos (n_eff) son altos, lo cual indica que las cadenas MCMC convergieron adecuadamente y los resultados son confiables.
+
+Con esto, si podemos concluir que el modelo jerárquico permite identificar patrones globales sin ignorar las diferencias individuales, siendo especialmente útil cuando algunos grupos (tanques) tienen poca información, con esto confirmas que **existe variabilidad real**en las tasas de supervivencia entre tanques.
 
 ### Relación entre log-odds y probabilidad
 
@@ -1269,12 +1263,15 @@ En este proyecto aplicamos modelos jerárquicos bayesianos para analizar datos e
 Nuestros principales hallazgos son:
 
 *Los modelos Total pooling subestiman la variabilidad*
+
 El enfoque de total pooling ignora la estructura jerárquica de los datos, asumiendo una única probabilidad de supervivencia para todos los tanques. Esto conduce a un subajuste (underfitting), perdiendo de vista diferencias importantes debidas a factores no observados, como la variación ambiental o genética entre tanques.
 
 *Los modelos No-pooling sobreajustan*
+
 El modelo sin agrupamiento (no pooling) asigna parámetros independientes a cada tanque, sin compartir información entre ellos. Esto resulta en sobreajuste (overfitting), especialmente en tanques con pocos datos, donde incluso pequeñas fluctuaciones generan estimaciones inestables.
 
 *El modelo jerárquico o Parcial pooling logra un equilibrio*
+
 El modelo parcialmente agrupado (partial pooling) combina la flexibilidad de asignar parámetros específicos a cada grupo con la estabilidad de una distribución común que los regula. Esta estructura:
 - Captura la heterogeneidad real entre tanques.
 - Reduce la incertidumbre en grupos pequeños mediante shrinkage adaptativo.
@@ -1286,7 +1283,4 @@ A nivel ecológico, encontramos que:
 - La densidad inicial afecta negativamente la supervivencia, probablemente por competencia intraespecífica o mayor exposición a depredadores.
 - La presencia de depredadores incrementa la variabilidad de las tasas de supervivencia, posiblemente por efectos de habituación o respuestas defensivas plásticas.
 - Las distribuciones iniciales de supervivencia pueden actuar como regularizadores informativos, permitiendo una inferencia más robusta.
-
-
-
 
